@@ -25,6 +25,7 @@ export function edgeBanner(opts: {
     opts.label ?? "QM Edge running",
     "",
     `HTTP:      http://localhost:${opts.port}/edge/health`,
+    `Dashboard: http://localhost:${opts.port}/edge#token=${opts.joinToken}`,
     `WebSocket: ws://localhost:${opts.port}/edge/ws`,
     ...(lan.length
       ? lan.map((ip, i) => `${i === 0 ? "LAN:      " : "          "} ws://${ip}:${opts.port}/edge/ws`)

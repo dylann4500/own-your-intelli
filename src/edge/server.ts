@@ -3,6 +3,7 @@ import type { Duplex } from "node:stream";
 import { WebSocketServer, type WebSocket } from "ws";
 import { errMessage } from "../util/errors.ts";
 import { EDGE_WS_PATH } from "./config.ts";
+import { EDGE_DASHBOARD_HTML } from "./dashboard.ts";
 import { handleEdgeApi } from "./http.ts";
 import type { EdgeHub } from "./hub.ts";
 import { EDGE_PROTOCOL_VERSION } from "./protocol.ts";
@@ -129,6 +130,11 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
 export async function handleEdgeHttpRequest(hub: EdgeHub, req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   const url = new URL(req.url ?? "/", "http://edge.local");
   const method = req.method ?? "GET";
+  if ((url.pathname === "/edge" || url.pathname === "/edge/") && method === "GET") {
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    res.end(EDGE_DASHBOARD_HTML);
+    return true;
+  }
   if (url.pathname === "/edge/health") {
     sendJson(res, 200, {
       ok: true,

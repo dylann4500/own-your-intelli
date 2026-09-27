@@ -283,6 +283,21 @@ function committedLine(result: { operation: EdgeCommittedOperation; duplicate: b
   return `${result.duplicate ? "duplicate (already committed)" : "committed"} #${op.sequence} ${op.actor.displayName} (${op.actor.type}) ${describeOperation(op)} [${op.resourceId}]`;
 }
 
+function joinNegativeNumbers(args: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] ?? "";
+    const next = args[i + 1];
+    if (arg.startsWith("--") && !arg.includes("=") && next !== undefined && /^-\d|^-\.\d/.test(next)) {
+      out.push(`${arg}=${next}`);
+      i++;
+      continue;
+    }
+    out.push(arg);
+  }
+  return out;
+}
+
 export async function runCli(argv: string[], env: Env): Promise<number> {
   const [command, ...rest] = argv;
   if (!command || command === "help" || command === "--help" || command === "-h") {
@@ -290,7 +305,7 @@ export async function runCli(argv: string[], env: Env): Promise<number> {
     return command ? 0 : 2;
   }
   const { values } = parseArgs({
-    args: rest,
+    args: joinNegativeNumbers(rest),
     allowPositionals: false,
     strict: true,
     options: {

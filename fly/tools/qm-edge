@@ -369,6 +369,20 @@ function committedLine(result) {
   const op = result.operation;
   return `${result.duplicate ? "duplicate (already committed)" : "committed"} #${op.sequence} ${op.actor.displayName} (${op.actor.type}) ${describeOperation(op)} [${op.resourceId}]`;
 }
+function joinNegativeNumbers(args) {
+  const out = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] ?? "";
+    const next = args[i + 1];
+    if (arg.startsWith("--") && !arg.includes("=") && next !== void 0 && /^-\d|^-\.\d/.test(next)) {
+      out.push(`${arg}=${next}`);
+      i++;
+      continue;
+    }
+    out.push(arg);
+  }
+  return out;
+}
 async function runCli(argv, env) {
   const [command, ...rest] = argv;
   if (!command || command === "help" || command === "--help" || command === "-h") {
@@ -376,7 +390,7 @@ async function runCli(argv, env) {
     return command ? 0 : 2;
   }
   const { values } = (0, import_node_util.parseArgs)({
-    args: rest,
+    args: joinNegativeNumbers(rest),
     allowPositionals: false,
     strict: true,
     options: {
