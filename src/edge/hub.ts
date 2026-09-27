@@ -90,6 +90,7 @@ export class EdgeHub {
   private readonly projects = new Map<string, EdgeProject>();
   private readonly connections = new Set<EdgeConnection>();
   private readonly rateWindows = new Map<string, { start: number; count: number }>();
+  private readonly actorNames = new Map<string, string>();
 
   constructor(options: EdgeHubOptions) {
     this.joinToken = options.joinToken;
@@ -100,6 +101,14 @@ export class EdgeHub {
     this.offlineRetentionMs = options.offlineRetentionMs ?? 30 * 60_000;
     this.now = options.now ?? Date.now;
     this.onCommit = options.onCommit;
+  }
+
+  nameActor(actorId: string, displayName: string): void {
+    this.actorNames.set(actorId, displayName.slice(0, 80));
+  }
+
+  displayNameFor(actorId: string): string | undefined {
+    return this.actorNames.get(actorId);
   }
 
   verifyToken(token: string | undefined | null): boolean {

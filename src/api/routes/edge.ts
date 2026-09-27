@@ -31,7 +31,10 @@ function humanActor(identity: PortalIdentity): EdgeActor {
 }
 
 function actorFor(ctx: ApiCtx): EdgeActor | null {
-  if (ctx.capability) return agentActor(ctx.capability);
+  if (ctx.capability) {
+    const actor = agentActor(ctx.capability);
+    return { ...actor, displayName: ctx.deps.edgeHub?.displayNameFor(actor.id) ?? actor.displayName };
+  }
   if (ctx.actor?.p && clean(ctx.actor.p, 240)) return humanActor(ctx.actor);
   return null;
 }
@@ -112,11 +115,11 @@ export const edgeRawRoutes: ReadonlyArray<Route<BaseCtx>> = [
     match: (method, pathname) =>
       pathname === "/edge/health" ||
       pathname.startsWith("/edge/v1/") ||
-      (method === "GET" && (pathname === "/edge" || pathname === "/edge/")),
+      (method === "GET" && (pathname === "/edge" || pathname === "/edge/" || pathname === "/edge/room")),
     auth: "public",
     handle: async ({ req, res, deps }) => {
       if (!deps.edgeHub) return sendJson(res, 404, EDGE_DISABLED);
-      await handleEdgeHttpRequest(deps.edgeHub, req, res);
+      await handleEdgeHttpRequest(deps.edgeHub, req, res, deps.edgeAgents ? { agents: deps.edgeAgents } : {});
     },
   },
 ];

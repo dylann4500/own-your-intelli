@@ -4,9 +4,10 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { errMessage } from "../util/errors.ts";
 import { EDGE_WS_PATH } from "./config.ts";
 import { EDGE_DASHBOARD_HTML } from "./dashboard.ts";
+import { EDGE_ROOM_HTML } from "./room.ts";
 import { handleEdgeApi, isReservedActorId } from "./http.ts";
 import type { EdgeHub } from "./hub.ts";
-import { EDGE_PROTOCOL_VERSION } from "./protocol.ts";
+import { EDGE_PROTOCOL_VERSION, EdgeProtocolError, edgeProjectId } from "./protocol.ts";
 
 const MAX_FRAME_BYTES = 512 * 1024;
 const MAX_BODY_BYTES = 64 * 1024;
@@ -154,9 +155,72 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   return text.trim() === "" ? {} : JSON.parse(text);
 }
 
-export async function handleEdgeHttpRequest(hub: EdgeHub, req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+export interface EdgeAgentRequest {
+  projectId: string;
+  name: string;
+  text: string;
+}
+
+export interface EdgeAgentBridge {
+  ask(request: EdgeAgentRequest): { agent: string };
+}
+
+export interface EdgeHttpOptions {
+  agents?: EdgeAgentBridge;
+}
+
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
+
+function askAgent(
+  hub: EdgeHub,
+  agents: EdgeAgentBridge | undefined,
+  projectId: string,
+  body: unknown,
+): { status: number; body: unknown } {
+  const input = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
+  const name = typeof input.name === "string" ? input.name.trim() : "";
+  const text = typeof input.text === "string" ? input.text.trim() : "";
+  if (!name || name.length > 40 || CONTROL_CHARACTERS.test(name)) {
+    return { status: 400, body: { error: "invalid_message", message: "name must be 1-40 printable characters" } };
+  }
+  if (!text || text.length > 2000) {
+    return { status: 400, body: { error: "invalid_message", message: "text must be 1-2000 characters" } };
+  }
+  if (!edgeProjectId.safeParse(projectId).success || !hub.hasProject(projectId)) {
+    return { status: 404, body: { error: "unknown_project", message: `no Edge project ${projectId}` } };
+  }
+  if (!agents) {
+    return {
+      status: 501,
+      body: {
+        error: "agents_unavailable",
+        message: "This hub runs without QM agents; start it with npm run edge:qm to prompt agents",
+      },
+    };
+  }
+  try {
+    return { status: 202, body: { accepted: true, ...agents.ask({ projectId, name, text }) } };
+  } catch (e) {
+    if (e instanceof EdgeProtocolError && e.code === "rate_limited") {
+      return { status: 429, body: { error: e.code, message: e.message } };
+    }
+    throw e;
+  }
+}
+
+export async function handleEdgeHttpRequest(
+  hub: EdgeHub,
+  req: IncomingMessage,
+  res: ServerResponse,
+  options: EdgeHttpOptions = {},
+): Promise<boolean> {
   const url = new URL(req.url ?? "/", "http://edge.local");
   const method = req.method ?? "GET";
+  if (url.pathname === "/edge/room" && method === "GET") {
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    res.end(EDGE_ROOM_HTML);
+    return true;
+  }
   if ((url.pathname === "/edge" || url.pathname === "/edge/") && method === "GET") {
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     res.end(EDGE_DASHBOARD_HTML);
@@ -187,9 +251,16 @@ export async function handleEdgeHttpRequest(hub: EdgeHub, req: IncomingMessage, 
       return true;
     }
   }
+  const subpath = url.pathname.slice("/edge/v1/".length);
+  const agentRoute = /^projects\/([^/]+)\/agent$/.exec(subpath);
+  if (agentRoute && method === "POST") {
+    const asked = askAgent(hub, options.agents, decodeURIComponent(agentRoute[1] ?? ""), body);
+    sendJson(res, asked.status, asked.body);
+    return true;
+  }
   const result = handleEdgeApi(hub, {
     method,
-    path: url.pathname.slice("/edge/v1/".length),
+    path: subpath,
     query: url.searchParams,
     body,
     actor: null,
@@ -198,9 +269,12 @@ export async function handleEdgeHttpRequest(hub: EdgeHub, req: IncomingMessage, 
   return true;
 }
 
-export function createEdgeServer(hub: EdgeHub): { server: Server; websocket: EdgeWebSocketHandle } {
+export function createEdgeServer(
+  hub: EdgeHub,
+  options: EdgeHttpOptions = {},
+): { server: Server; websocket: EdgeWebSocketHandle } {
   const server = createServer((req, res) => {
-    handleEdgeHttpRequest(hub, req, res)
+    handleEdgeHttpRequest(hub, req, res, options)
       .then((handled) => {
         if (!handled)
           sendJson(res, 404, {

@@ -10,6 +10,7 @@ import { shutdownOnUncaught } from "./util/process-guard.ts";
 import { closeEdgeWebSocket, createServer } from "./api/server.ts";
 import { edgeBanner } from "./edge/banner.ts";
 import { createConfiguredEdgeHub } from "./edge/runtime.ts";
+import { createEdgeAgentBridge } from "./api/edge-agents.ts";
 import { dockerDaemonFailure } from "./deploy/docker-deploy-provider.ts";
 import { errMessage, reportFailureAs } from "./util/errors.ts";
 import { slackAccountConfigsFromEnv, slackPluginConfigFromEnv, startSlackPlugin } from "./slack/index.ts";
@@ -20,6 +21,7 @@ const config = loadConfig();
 
 const built = buildApp(config);
 const edgeHub = config.edge.enabled ? createConfiguredEdgeHub(config.edge) : undefined;
+const edgeAgents = edgeHub ? createEdgeAgentBridge(built.app, edgeHub) : undefined;
 await migrateRegisteredPgSchemas(config.databaseUrl);
 await built.sandboxResources.initialize();
 const backfilledFires = await built.crons.backfillFires();
@@ -44,6 +46,7 @@ const server = createServer(built.app, {
   ...serverDeps(config, built, slackEnvironmentState, envSlackConfig?.botToken),
   managedSlack,
   ...(edgeHub ? { edgeHub } : {}),
+  ...(edgeAgents ? { edgeAgents } : {}),
 });
 
 await built.config.hydrate?.();

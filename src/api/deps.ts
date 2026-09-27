@@ -78,6 +78,7 @@ import type { SlackInstallationStore, SlackSocketAppIdReader } from "../surfaces
 
 import type { SlackAccountLink, ComposioReturn } from "./routes/composio.ts";
 import type { EdgeHub } from "../edge/hub.ts";
+import type { EdgeAgentBridge } from "../edge/server.ts";
 
 export interface ServerDeps {
   externalSlackPolicies?: ExternalSlackPolicies;
@@ -203,4 +204,5 @@ export interface ServerDeps {
   fireDropResolution?: (drop: DropResolution) => Promise<unknown>;
   blobTransfer?: BlobTransferStore;
   edgeHub?: EdgeHub;
+  edgeAgents?: EdgeAgentBridge;
 }
