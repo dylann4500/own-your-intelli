@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import { createInterface } from "node:readline";
 import { parseArgs } from "node:util";
-import { MemorySceneAdapter } from "../src/edge/adapters/memory-scene.ts";
+import { MemorySceneAdapter, type SceneObject } from "../src/edge/adapters/memory-scene.ts";
 import { normalizePrimitive, type Vec3 } from "../src/edge/adapters/unity.ts";
 import { EdgeNodeSession } from "../src/edge/client.ts";
 import type { EdgeCommittedOperation, EdgeJson, EdgePresenceEntry } from "../src/edge/protocol.ts";
@@ -22,27 +22,26 @@ const { values } = parseArgs({
     token: { type: "string", default: process.env.QM_EDGE_TOKEN ?? "" },
     project: { type: "string", default: process.env.QM_EDGE_PROJECT ?? "unity-demo" },
     name: { type: "string", default: process.env.USER ?? "Fake Node" },
+    empty: { type: "boolean", default: false },
   },
 });
 
 const name = values.name ?? "Fake Node";
-const scene = new MemorySceneAdapter(
-  [
-    {
-      id: "baseline-cube",
-      properties: { name: "Cube", primitive: "Cube", position: [0, 0.5, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
-    },
-    {
-      id: "baseline-player",
-      properties: { name: "Player", primitive: "Capsule", position: [0, 1, -3], rotation: [0, 0, 0], scale: [1, 1, 1] },
-    },
-    {
-      id: "baseline-main-light",
-      properties: { name: "Main Light", position: [0, 3, 0], rotation: [50, -30, 0], "light.intensity": 1 },
-    },
-  ],
-  "async",
-);
+const baseline: SceneObject[] = [
+  {
+    id: "baseline-cube",
+    properties: { name: "Cube", primitive: "Cube", position: [0, 0.5, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+  },
+  {
+    id: "baseline-player",
+    properties: { name: "Player", primitive: "Capsule", position: [0, 1, -3], rotation: [0, 0, 0], scale: [1, 1, 1] },
+  },
+  {
+    id: "baseline-main-light",
+    properties: { name: "Main Light", position: [0, 3, 0], rotation: [50, -30, 0], "light.intensity": 1 },
+  },
+];
+const scene = new MemorySceneAdapter(values.empty ? [] : baseline, "async");
 
 const session = new EdgeNodeSession({
   url: values.url ?? "",

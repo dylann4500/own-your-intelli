@@ -65,7 +65,9 @@
     "edge:build-cli": "node scripts/edge-build-cli.ts",
     "edge:agent": "node scripts/edge-agent-chat.ts",
     "edge:sandbox:build": "node scripts/edge-build-cli.ts && docker build -f local/edge-demo.Dockerfile -t qm-sandbox-local:latest .",
-    "edge:qm": "bash scripts/edge-demo-core.sh"
+    "edge:qm": "bash scripts/edge-demo-core.sh",
+    "edge:seed": "node scripts/edge-seed-scene.ts",
+    "edge:kit": "node scripts/edge-kit.ts"
   },
   "lint-staged": {
     "*": "prettier --write --ignore-unknown"
