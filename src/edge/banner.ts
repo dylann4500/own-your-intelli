@@ -1,6 +1,6 @@
 import { networkInterfaces } from "node:os";
 
-export function lanAddresses(): string[] {
+function lanAddresses(): string[] {
   const addresses: string[] = [];
   for (const [name, entries] of Object.entries(networkInterfaces())) {
     for (const entry of entries ?? []) {

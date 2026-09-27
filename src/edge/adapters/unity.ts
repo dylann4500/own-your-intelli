@@ -17,7 +17,7 @@ export const UNITY_ACTIONS = ["create_object", "set_transform", "set_property", 
 
 export type Vec3 = [number, number, number];
 
-export const PROPERTY_ALIASES: Record<string, string> = {
+const PROPERTY_ALIASES: Record<string, string> = {
   intensity: "light.intensity",
   "light.intensity": "light.intensity",
   color: "light.color",

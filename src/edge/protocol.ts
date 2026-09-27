@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 export const EDGE_PROTOCOL_VERSION = 1;
-export const EDGE_MAX_PAYLOAD_BYTES = 16 * 1024;
-export const EDGE_MAX_ANNOUNCED_RESOURCES = 5000;
+const EDGE_MAX_PAYLOAD_BYTES = 16 * 1024;
+const EDGE_MAX_ANNOUNCED_RESOURCES = 5000;
 
 const printable = /^[^\u0000-\u001f\u007f]+$/;
 
@@ -16,8 +16,8 @@ const edgeTypeName = z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/, "must st
 
 export type EdgeJson = z.core.util.JSONType;
 
-export const edgeActorType = z.enum(["human", "agent", "system"]);
-export type EdgeActorType = z.infer<typeof edgeActorType>;
+const edgeActorType = z.enum(["human", "agent", "system"]);
+type EdgeActorType = z.infer<typeof edgeActorType>;
 
 export const edgeActor = z.strictObject({
   id: edgeId,
@@ -26,7 +26,7 @@ export const edgeActor = z.strictObject({
 });
 export type EdgeActor = z.infer<typeof edgeActor>;
 
-export const edgeNode = z.strictObject({
+const edgeNode = z.strictObject({
   id: edgeId,
   adapter: edgeToken,
   deviceName: edgeName.optional(),
@@ -34,20 +34,19 @@ export const edgeNode = z.strictObject({
 });
 export type EdgeNode = z.infer<typeof edgeNode>;
 
-export const edgeEffect = z.enum(["create", "update", "delete", "none"]);
+const edgeEffect = z.enum(["create", "update", "delete", "none"]);
 export type EdgeEffect = z.infer<typeof edgeEffect>;
 
 const propertyKey = z.string().min(1).max(128).regex(printable, "property keys must not contain control characters");
-export const edgeProperties = z
+const edgeProperties = z
   .record(propertyKey, z.json())
   .refine((value) => Object.keys(value).length <= 256, "at most 256 properties per operation")
   .refine(
     (value) => byteLength(value) <= EDGE_MAX_PAYLOAD_BYTES,
     `payload must be at most ${EDGE_MAX_PAYLOAD_BYTES} bytes`,
   );
-export type EdgeProperties = z.infer<typeof edgeProperties>;
 
-export const edgeOperation = z.strictObject({
+const edgeOperation = z.strictObject({
   id: z.uuid(),
   protocolVersion: z.literal(EDGE_PROTOCOL_VERSION),
   projectId: edgeProjectId,
@@ -133,7 +132,7 @@ const pingMessage = z.strictObject({
   nonce: z.string().max(64).optional(),
 });
 
-export const edgeClientMessage = z.discriminatedUnion("type", [
+const edgeClientMessage = z.discriminatedUnion("type", [
   helloMessage,
   joinProjectMessage,
   leaveProjectMessage,

@@ -100,7 +100,7 @@ export function attachEdgeWebSocket(
   };
 }
 
-export function edgeTokenFrom(req: IncomingMessage): string | null {
+function edgeTokenFrom(req: IncomingMessage): string | null {
   const header = req.headers.authorization;
   if (typeof header === "string" && header.toLowerCase().startsWith("bearer ")) return header.slice(7).trim();
   const edgeHeader = req.headers["x-edge-token"];
