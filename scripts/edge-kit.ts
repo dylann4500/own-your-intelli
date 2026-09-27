@@ -24,8 +24,16 @@ if (!token) {
   process.exit(1);
 }
 
-const wsUrl = `ws://${host}:${port}/edge/ws`;
-const httpUrl = `http://${host}:${port}`;
+const publicUrl = process.env.EDGE_PUBLIC_URL?.replace(/\/+$/, "") || null;
+const kitUrl = process.env.EDGE_KIT_PUBLIC_URL?.replace(/\/+$/, "") || `http://${host}:${kitPort}`;
+const httpUrl = publicUrl ?? `http://${host}:${port}`;
+const wsUrl = `${httpUrl.replace(/^http/, "ws")}/edge/ws`;
+const reach = publicUrl
+  ? "It works from any network; the hub is reached through a secure tunnel."
+  : "Your Mac must be on the same Wi-Fi as the hub.";
+const reachTrouble = publicUrl
+  ? "check that you have internet access and copied the links exactly."
+  : "make sure you are on the same Wi-Fi as the hub (guest networks often block device-to-device traffic; a phone hotspot works).";
 const dashboard = `${httpUrl}/edge#token=${token}`;
 
 rmSync(out, { recursive: true, force: true });
@@ -86,6 +94,7 @@ const html = `<!doctype html>
   .code { position:relative; background:#0b0d11; border:1px solid var(--line); border-radius:8px; margin:10px 0; }
   .code pre { margin:0; padding:12px 70px 12px 12px; white-space:pre-wrap; word-break:break-all; }
   .code button { position:absolute; top:8px; right:8px; }
+  input, select { background:#0b0d11; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:4px 8px; font:inherit; font-size:14px; margin-right:10px; }
   button, .btn { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:5px 10px; font:inherit; font-size:13px; cursor:pointer; text-decoration:none; display:inline-block; }
   .btn.primary { border-color:var(--accent); color:var(--accent); }
   ol li { margin:8px 0; }
@@ -96,7 +105,7 @@ const html = `<!doctype html>
 <body>
 <main>
   <h1>Join QM Edge</h1>
-  <p class="muted">Live, shared scene state between Macs and QM agents. Your Mac must be on the same Wi-Fi as the hub.</p>
+  <p class="muted">Live, shared scene state between Macs and QM agents. ${esc(reach)}</p>
   <div class="facts">
     <b>Hub</b><code>${esc(wsUrl)}</code>
     <b>Project</b><code>${esc(project)}</code>
@@ -143,16 +152,71 @@ const html = `<!doctype html>
   <p class="muted">Swap <code>objects</code> for <code>create --primitive Cube --name MyCube --x 2 --y 1 --z 0</code>, <code>move --object Cube --x 5</code>, <code>set --object "Main Light" --property intensity --value 2</code>, <code>peers</code> or <code>events</code>.</p>
   </div>
 
+  <h2>Test: agents collaborating</h2>
+  <div class="card">
+  <p>Each person connects (Option A or B) and also gives their own coding agent (Claude Code, Codex, Cursor, or anything that can run shell commands) a role. The agents share one live scene with the humans and each other. Download <a class="btn" href="qm-edge.cjs" download>qm-edge.cjs</a> into Downloads, then generate your agent's prompt:</p>
+  <p><label>Your name <input id="agentName" value="" placeholder="e.g. Kveld" size="12"></label>
+  <label>Role <select id="agentRole">
+    <option value="left">Left builder (house)</option>
+    <option value="right">Right builder (tower)</option>
+    <option value="director">Director (connects everyone's work)</option>
+  </select></label></p>
+  <div class="code"><pre id="agentPrompt"></pre><button onclick="copy(this)">Copy</button></div>
+  <p class="muted">Suggested split: one person per role (the hub's QM agent can be the Director: type the Director task into <code>npm run edge:agent</code> on the hub Mac). Give all agents their prompt at about the same time, then watch every editor fill in at once, the dashboard list each agent as its own peer, and the timeline interleave humans and agents. For a conflict test, have two people (or agents) move the Cube to different spots at the same moment: every screen must end identical, and the later edit wins.</p>
+  </div>
+
   <h2>If something is off</h2>
   <ul>
-    <li><b>Can't connect / this page won't load:</b> make sure you are on the same Wi-Fi as the hub (guest networks often block device-to-device traffic; a phone hotspot works).</li>
+    <li><b>Can't connect:</b> ${esc(reachTrouble)}</li>
     <li><b>"invalid join token":</b> re-type the token above exactly, then press Connect again.</li>
     <li><b>Unity shows errors prefixed [QM Edge]:</b> open Window &rarr; QM Edge to see the last error; Disconnect then Connect.</li>
-    <li>The URL starts with <code>ws://</code>, not <code>http://</code>, and ends with <code>/edge/ws</code>.</li>
+    <li>The hub URL starts with <code>${publicUrl ? "wss" : "ws"}://</code>, not <code>http</code>, and ends with <code>/edge/ws</code>. Copy it with the button above.</li>
     <li><b>The hub was restarted and you see duplicate objects:</b> Unity: Disconnect, <b>File &rarr; New Scene</b>, Connect. Terminal node: quit and run the command again.</li>
   </ul>
 </main>
 <script>
+var EDGE = ${JSON.stringify({ httpUrl, token, project })};
+var TASKS = {
+  left: "Build a small house to the LEFT of the Player (x between -7 and -3, z between -5 and -1): four thin walls from scaled Cubes and a flat roof.",
+  right: "Build a watchtower to the RIGHT of the Player (x between 3 and 7, z between -5 and -1): three stacked Cylinders with a Sphere on top.",
+  director: "Look at what the other agents are building (objects, events). Put a glowing Sphere lamp above each structure and a path of small flat Cubes from the Player to each structure. Wait for the builders if they are not done yet, then say what you added."
+};
+function slug(value) { return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "agent"; }
+function renderPrompt() {
+  var name = document.getElementById("agentName").value.trim() || "YOUR NAME";
+  var role = document.getElementById("agentRole").value;
+  var q = String.fromCharCode(34);
+  var nl = String.fromCharCode(10);
+  var cli = "QM_EDGE_URL=" + EDGE.httpUrl + " QM_EDGE_TOKEN=" + EDGE.token + " QM_EDGE_ACTOR_ID=" + slug(name) + "-agent QM_EDGE_ACTOR_NAME=" + q + name + "'s agent" + q + " node ~/Downloads/qm-edge.cjs";
+  document.getElementById("agentPrompt").textContent = [
+    "You are " + name + "'s agent in a live multiplayer 3D scene (QM Edge project " + q + EDGE.project + q + "). Several people and several AI agents are editing the same scene right now, and every change appears instantly in everyone's Unity Editor.",
+    "",
+    "Run every command in a shell exactly like this:",
+    "  " + cli + " <command>",
+    "",
+    "Commands:",
+    "  objects                  what exists (names, positions)",
+    "  peers                    who is online (humans and agents) and what they are working on",
+    "  events --limit 20        what just happened and who did it",
+    "  say " + q + "<message>" + q + "          tell everyone what you are doing (if your version has it)",
+    "  messages                 read what others said (if your version has it)",
+    "  create --primitive Cube|Sphere|Capsule|Cylinder|Plane --name N --x X --y Y --z Z",
+    "  move|rotate|scale --object N --x X --y Y --z Z",
+    "  set --object N --property intensity|color --value V",
+    "  delete --object N",
+    "",
+    "How to work with the others:",
+    "1. Start with objects, peers and events (and messages).",
+    "2. Announce your plan with say before building.",
+    "3. Name everything you create " + slug(name).replace(/-/g, "_") + "_something, and only change your own objects unless someone asks you to.",
+    "4. When done, check events and messages again, react to what others built, and say that you are finished.",
+    "",
+    "Your task: " + TASKS[role]
+  ].join(nl);
+}
+document.getElementById("agentName").addEventListener("input", renderPrompt);
+document.getElementById("agentRole").addEventListener("change", renderPrompt);
+renderPrompt();
 function copy(button) {
   var text = button.previousElementSibling.textContent;
   var done = function () { button.textContent = "Copied"; setTimeout(function () { button.textContent = "Copy"; }, 1200); };
@@ -166,4 +230,4 @@ function copy(button) {
 
 writeFileSync(join(out, "index.html"), html);
 console.log(`QM Edge kit written to ${out}`);
-console.log(`Share this link with people on the same Wi-Fi: http://${host}:${kitPort}/`);
+console.log(`Share this link${publicUrl ? "" : " with people on the same Wi-Fi"}: ${kitUrl}/`);

@@ -25,12 +25,13 @@ export CORE_SIGNING_SECRET
 export EDGE_ENABLED=1
 export EDGE_JOIN_TOKEN="${EDGE_JOIN_TOKEN:-$(openssl rand -hex 4)}"
 export EDGE_PROJECT="${EDGE_PROJECT:-unity-demo}"
+export EDGE_JOURNAL_DIR="${EDGE_JOURNAL_DIR:-data/edge-journal}"
 export PORT="${PORT:-8080}"
 export HARNESS="${HARNESS:-codex}"
 export SANDBOX_BACKEND=local
 export PUBLIC_API_URL="${PUBLIC_API_URL:-http://host.docker.internal:${PORT}}"
 
 echo "==> QM core + QM Edge on :${PORT} (harness ${HARNESS}, sandbox local docker)"
-echo "==> project ${EDGE_PROJECT}, join token ${EDGE_JOIN_TOKEN}"
+echo "==> project ${EDGE_PROJECT}, join token ${EDGE_JOIN_TOKEN}, journal ${EDGE_JOURNAL_DIR} (delete it for a fresh scene)"
 echo "==> dashboard http://localhost:${PORT}/edge#token=${EDGE_JOIN_TOKEN}"
 exec node --env-file-if-exists=.env src/index.ts
