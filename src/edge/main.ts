@@ -1,22 +1,14 @@
 import { errMessage } from "../util/errors.ts";
 import { edgeBanner } from "./banner.ts";
 import { EDGE_DEFAULT_PORT, parseEdgeEnv } from "./config.ts";
-import { EdgeHub } from "./hub.ts";
-import { createEdgeJournal } from "./journal.ts";
+import { createConfiguredEdgeHub } from "./runtime.ts";
 import { createEdgeServer } from "./server.ts";
 
 function main(): void {
   const config = parseEdgeEnv(process.env, { enabledByDefault: true });
   const port = Number(process.env.EDGE_PORT ?? process.env.PORT ?? EDGE_DEFAULT_PORT);
   const host = process.env.EDGE_HOST ?? "0.0.0.0";
-  const journal = config.journalDir ? createEdgeJournal(config.journalDir) : null;
-  const hub = new EdgeHub({
-    joinToken: config.joinToken,
-    historyLimit: config.historyLimit,
-    ...(journal ? { onCommit: (op) => journal.append(op) } : {}),
-  });
-  if (journal) hub.restore(journal.load());
-  hub.ensureProject(config.defaultProject);
+  const hub = createConfiguredEdgeHub(config);
   const { server, websocket } = createEdgeServer(hub);
   server.on("error", (e) => {
     console.error(`QM Edge failed to listen on ${host}:${port}: ${errMessage(e)}`);
@@ -31,7 +23,7 @@ function main(): void {
         generated: config.joinTokenGenerated,
       }),
     );
-    if (journal)
+    if (config.journalDir)
       console.log(`Journal:    ${config.journalDir} (restored sequence ${hub.latestSequence(config.defaultProject)})`);
   });
   const shutdown = (): void => {
