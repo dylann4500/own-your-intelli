@@ -724,7 +724,7 @@ async function listAgentApis(ctx: ApiCtx): Promise<void> {
     renderAgentApis(
       capability,
       { isAdmin: admin.isAdmin, ...(admin.role ? { role: admin.role } : {}) },
-      { swarmsEnabled: Boolean(ctx.app.swarms) },
+      { swarmsEnabled: Boolean(ctx.app.swarms), edgeEnabled: Boolean(deps.edgeHub) },
     ),
   );
 }

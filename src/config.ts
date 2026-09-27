@@ -42,6 +42,7 @@ import {
 } from "./model/pi-models.ts";
 
 import { resolveSwarmSettings, type SwarmSettings } from "./swarms/swarm-settings.ts";
+import { parseEdgeEnv, type EdgeConfig } from "./edge/config.ts";
 
 export interface Config {
   productAnalytics?: { apiKey: string; host?: string };
@@ -208,6 +209,7 @@ export interface Config {
   awsDeploy: AwsDeployEnv;
   deployAppsDomain?: string;
   flyDeploy: FlyDeployEnv;
+  edge: EdgeConfig;
 }
 
 export function configuredModelForHarness(config: Config, harness: string): string | undefined {
@@ -1130,6 +1132,12 @@ function modelProviderEnvStrict(env: NodeJS.ProcessEnv): ModelProvider | undefin
   return declared;
 }
 
+function coreEdgeConfig(env: NodeJS.ProcessEnv): EdgeConfig {
+  const flag = parseEdgeEnv({ EDGE_ENABLED: env.EDGE_ENABLED }, { enabledByDefault: false });
+  if (!flag.enabled) return { ...flag, joinToken: "", joinTokenGenerated: false };
+  return parseEdgeEnv(env, { enabledByDefault: false });
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (env.BACKGROUND_DEPLOYMENT_ID !== undefined) {
     if (!env.BACKGROUND_DEPLOYMENT_ID.trim() || env.BACKGROUND_DEPLOYMENT_ID.length > 256)
@@ -1662,5 +1670,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     },
     ...(deployAppsDomain ? { deployAppsDomain } : {}),
     flyDeploy: flyDeployEnv(env),
+    edge: coreEdgeConfig(env),
   };
 }

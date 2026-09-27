@@ -33,6 +33,10 @@ const scene = new MemorySceneAdapter(
       properties: { name: "Cube", primitive: "Cube", position: [0, 0.5, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
     },
     {
+      id: "baseline-player",
+      properties: { name: "Player", primitive: "Capsule", position: [0, 1, -3], rotation: [0, 0, 0], scale: [1, 1, 1] },
+    },
+    {
       id: "baseline-main-light",
       properties: { name: "Main Light", position: [0, 3, 0], rotation: [50, -30, 0], "light.intensity": 1 },
     },

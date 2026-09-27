@@ -38,6 +38,8 @@ import { proxyDeploymentSubdomain } from "./routes/deployments.ts";
 import { CAPABILITY_HEADER } from "./contract.ts";
 import { livePersonCapability } from "./artifact-share.ts";
 import { canonicalPerson, samePerson } from "../directory/person.ts";
+import { attachEdgeWebSocket, type EdgeWebSocketHandle } from "../edge/server.ts";
+import { EDGE_WS_PATH } from "../edge/config.ts";
 
 const safeDecode = (s: string): string => {
   try {
@@ -178,6 +180,20 @@ declare module "fastify" {
 }
 
 const rawBodies = new WeakMap<IncomingMessage, string>();
+const edgeWebSockets = new WeakMap<Server, EdgeWebSocketHandle>();
+
+function isEdgeWebSocketRequest(req: IncomingMessage): boolean {
+  try {
+    return new URL(req.url ?? "/", "http://localhost").pathname === EDGE_WS_PATH;
+  } catch {
+    return false;
+  }
+}
+
+export function closeEdgeWebSocket(server: Server): void {
+  edgeWebSockets.get(server)?.close();
+  edgeWebSockets.delete(server);
+}
 
 async function gate(
   req: IncomingMessage,
@@ -304,7 +320,12 @@ async function gate(
     deps.config &&
     (await deps.config.getSecurityPostureDurable(capability.scopeId)) === "strict"
   ) {
-    sendJson(res, 403, { error: "forbidden", message: "Strict posture blocks direct control-plane mutations" });
+    sendJson(res, 403, {
+      error: "forbidden",
+      message: pathname.startsWith("/v1/edge/")
+        ? "Strict posture blocks direct control-plane mutations, including QM Edge operations and presence; ask a person to make this edit from a connected client"
+        : "Strict posture blocks direct control-plane mutations",
+    });
     return null;
   }
 
@@ -518,7 +539,8 @@ function buildServer(app: App, deps: ServerOptions, allowUnsignedSourceAuth: boo
     allowUnsignedSourceAuth,
   };
   const requestNames = new WeakMap<IncomingMessage, string>();
-  const server = createHttpServer((req, res) => {
+  const shouldUpgradeCallback = (req: IncomingMessage): boolean => Boolean(deps.edgeHub) && isEdgeWebSocketRequest(req);
+  const server = createHttpServer({ shouldUpgradeCallback }, (req, res) => {
     const finishTiming =
       req.url === "/healthz" || req.url === "/readyz"
         ? undefined
@@ -542,6 +564,7 @@ function buildServer(app: App, deps: ServerOptions, allowUnsignedSourceAuth: boo
   server.headersTimeout = 10_000;
   server.keepAliveTimeout = 5_000;
   server.maxConnections = 1024;
+  if (deps.edgeHub) edgeWebSockets.set(server, attachEdgeWebSocket(server, deps.edgeHub));
 
   async function front(req: IncomingMessage, res: ServerResponse): Promise<void> {
     armBodyDeadline(req, 30_000);

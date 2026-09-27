@@ -4,7 +4,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { errMessage } from "../util/errors.ts";
 import { EDGE_WS_PATH } from "./config.ts";
 import { EDGE_DASHBOARD_HTML } from "./dashboard.ts";
-import { handleEdgeApi } from "./http.ts";
+import { handleEdgeApi, isReservedActorId } from "./http.ts";
 import type { EdgeHub } from "./hub.ts";
 import { EDGE_PROTOCOL_VERSION } from "./protocol.ts";
 
@@ -54,13 +54,26 @@ export function attachEdgeWebSocket(
       },
     });
     socket.on("pong", () => alive.set(socket, true));
+    let rejected = false;
     socket.on("message", (data, isBinary) => {
+      if (rejected) return;
       alive.set(socket, true);
       if (isBinary) {
         connection.handle(null);
         return;
       }
       connection.handle(data.toString());
+      if (connection.actor && isReservedActorId(connection.actor.id)) {
+        connection.send({
+          type: "error",
+          code: "actor_mismatch",
+          message: `actor id ${connection.actor.id} is reserved for identities QM core assigns`,
+          requestType: "hello",
+        });
+        rejected = true;
+        socket.close(1008, "reserved actor id");
+        connection.close();
+      }
     });
     socket.on("close", () => connection.close());
     socket.on("error", () => connection.close());

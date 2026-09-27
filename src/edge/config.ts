@@ -26,7 +26,7 @@ export function parseEdgeEnv(env: Record<string, string | undefined>, opts: { en
   }
   const project = env.EDGE_PROJECT?.trim() || "unity-demo";
   if (!edgeProjectId.safeParse(project).success) throw new Error(`EDGE_PROJECT is not a valid project id: ${project}`);
-  const historyLimit = Number(env.EDGE_HISTORY_LIMIT ?? 2000);
+  const historyLimit = Number(env.EDGE_HISTORY_LIMIT?.trim() || 2000);
   if (!Number.isInteger(historyLimit) || historyLimit < 100)
     throw new Error("EDGE_HISTORY_LIMIT must be an integer >= 100");
   return {

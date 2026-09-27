@@ -74,6 +74,10 @@ test("raw routes keep their declared auth contracts (they self-enforce, so the d
   const pins: Array<[string, string, RouteAuth]> = [
     ["GET", "/healthz", "public"],
     ["GET", "/readyz", "public"],
+    ["GET", "/edge", "public"],
+    ["GET", "/edge/health", "public"],
+    ["GET", "/edge/v1/projects", "public"],
+    ["POST", "/edge/v1/projects/unity-demo/operations", "public"],
     ["GET", "/v1/credentials/git/gitlab/acme/repo.git/info/refs", { aud: CREDENTIAL_BROKER_AUD }],
     ["POST", "/v1/credentials/git/gitlab/acme/repo.git/git-upload-pack", { aud: CREDENTIAL_BROKER_AUD }],
   ];

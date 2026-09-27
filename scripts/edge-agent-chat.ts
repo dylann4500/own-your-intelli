@@ -26,9 +26,9 @@ async function turn(text: string): Promise<string> {
     surface: "edge-demo",
     actor: { externalId: user },
     conversation: { kind: "dm", threadRef: thread },
-    text: first ? preamble + text : text,
+    text: first && !text.startsWith("!") ? preamble + text : text,
   });
-  first = false;
+  if (!text.startsWith("!")) first = false;
   const response = await fetch(`${core}${path}`, {
     method: "POST",
     headers: signedRequestHeaders(secret, "POST", path, body, { "content-type": "application/json" }),

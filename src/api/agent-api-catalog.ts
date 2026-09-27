@@ -11,6 +11,7 @@ interface AgentApiView {
   claims: CapabilityClaims;
   isAdmin: boolean;
   swarmsEnabled: boolean;
+  edgeEnabled: boolean;
 }
 
 interface AgentApiFamily {
@@ -21,6 +22,9 @@ interface AgentApiFamily {
 }
 
 const onPath = (m: string, p: string) => (method: string, pathname: string) => method === m && pathname === p;
+
+const EDGE_READ = /^\/v1\/edge\/projects(?:\/[^/]+(?:\/(?:presence|events|resources))?)?$/;
+const EDGE_WRITE = /^\/v1\/edge\/projects\/[^/]+\/(?:operations|presence)$/;
 
 const FAMILIES: AgentApiFamily[] = [
   {
@@ -925,6 +929,42 @@ const FAMILIES: AgentApiFamily[] = [
       { method: "GET", path: "/v1/admin/files/download?id=", summary: "download a stored file" },
     ],
   },
+  {
+    match: (method, path) => (method === "GET" && EDGE_READ.test(path)) || (method === "POST" && EDGE_WRITE.test(path)),
+    when: (view) => view.edgeEnabled,
+    guidance:
+      "QM Edge is the live shared world humans edit from Unity. Prefer the `qm-edge` CLI: qm-edge status | peers | events | objects | create --primitive Cube --name N --x 0 --y 1 --z 0 | move --object N --x 5 | set --object N --property intensity --value 2 | delete --object N. Or curl $AGENT_API_URL/v1/edge/... with header x-agent-capability. Your edits are attributed to you as an agent; any actor you send is ignored. Read objects before moving or deleting them.",
+    routes: [
+      { method: "GET", path: "/v1/edge/projects", summary: "Edge projects with latest sequence and online count" },
+      {
+        method: "GET",
+        path: "/v1/edge/projects/:projectId",
+        summary: "one project: members, latest sequence, resource count",
+      },
+      { method: "GET", path: "/v1/edge/projects/:projectId/presence", summary: "who is connected and what they edit" },
+      {
+        method: "GET",
+        path: "/v1/edge/projects/:projectId/events?after=&limit=",
+        summary: "committed operations in sequence order",
+      },
+      {
+        method: "GET",
+        path: "/v1/edge/projects/:projectId/resources?adapter=&type=&includeDeleted=",
+        summary: "current state of shared objects",
+      },
+      {
+        method: "POST",
+        path: "/v1/edge/projects/:projectId/operations",
+        summary:
+          "{operation:{adapter,resourceType,resourceId,action,effect:create|update|delete|none,payload}} commits one edit and broadcasts it to every connected client",
+      },
+      {
+        method: "POST",
+        path: "/v1/edge/projects/:projectId/presence",
+        summary: "{workingOn?:{resourceType,resourceId,label}} marks you present in the project",
+      },
+    ],
+  },
 ];
 
 const WHOAMI_FOR_ALL: AgentApiFamily = {
@@ -950,12 +990,13 @@ export interface AgentApiListing {
 export function renderAgentApis(
   claims: CapabilityClaims,
   admin: { isAdmin: boolean; role?: string },
-  features: { swarmsEnabled: boolean },
+  features: { swarmsEnabled: boolean; edgeEnabled?: boolean },
 ): AgentApiListing {
   const view: AgentApiView = {
     claims,
     isAdmin: admin.isAdmin,
     swarmsEnabled: features.swarmsEnabled,
+    edgeEnabled: features.edgeEnabled ?? false,
   };
   const visible = [...FAMILIES, WHOAMI_FOR_ALL].filter((f) => f.when?.(view) ?? true);
   return {

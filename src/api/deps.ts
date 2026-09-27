@@ -77,6 +77,7 @@ import type { AdvisoryLock } from "../persistence/advisory-lock.ts";
 import type { SlackInstallationStore, SlackSocketAppIdReader } from "../surfaces/slack-installation.ts";
 
 import type { SlackAccountLink, ComposioReturn } from "./routes/composio.ts";
+import type { EdgeHub } from "../edge/hub.ts";
 
 export interface ServerDeps {
   externalSlackPolicies?: ExternalSlackPolicies;
@@ -201,4 +202,5 @@ export interface ServerDeps {
   secretDrops?: SecretDropStore;
   fireDropResolution?: (drop: DropResolution) => Promise<unknown>;
   blobTransfer?: BlobTransferStore;
+  edgeHub?: EdgeHub;
 }

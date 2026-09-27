@@ -7,7 +7,9 @@ import { lookup } from "node:dns/promises";
 import { loadConfig } from "./config.ts";
 import { buildApp, serverDeps, stopWithBackstop } from "./wiring.ts";
 import { shutdownOnUncaught } from "./util/process-guard.ts";
-import { createServer } from "./api/server.ts";
+import { closeEdgeWebSocket, createServer } from "./api/server.ts";
+import { edgeBanner } from "./edge/banner.ts";
+import { createConfiguredEdgeHub } from "./edge/runtime.ts";
 import { dockerDaemonFailure } from "./deploy/docker-deploy-provider.ts";
 import { errMessage, reportFailureAs } from "./util/errors.ts";
 import { slackAccountConfigsFromEnv, slackPluginConfigFromEnv, startSlackPlugin } from "./slack/index.ts";
@@ -17,6 +19,7 @@ import { migrateRegisteredPgSchemas } from "./persistence/pg-pool.ts";
 const config = loadConfig();
 
 const built = buildApp(config);
+const edgeHub = config.edge.enabled ? createConfiguredEdgeHub(config.edge) : undefined;
 await migrateRegisteredPgSchemas(config.databaseUrl);
 await built.sandboxResources.initialize();
 const backfilledFires = await built.crons.backfillFires();
@@ -40,6 +43,7 @@ const managedSlack = process.env.QM_SLACK_SERVICE_URL
 const server = createServer(built.app, {
   ...serverDeps(config, built, slackEnvironmentState, envSlackConfig?.botToken),
   managedSlack,
+  ...(edgeHub ? { edgeHub } : {}),
 });
 
 await built.config.hydrate?.();
@@ -54,6 +58,26 @@ server.listen(config.port, () => {
     `[qm] listening on :${config.port} (org=${config.orgId}, store=${config.sessionStore}, ` +
       `runStore=${config.runStore}, workers=${config.workers}, backgroundWork=${config.backgroundWorkEnabled})`,
   );
+  if (edgeHub) {
+    const address = server.address();
+    console.log(
+      edgeBanner({
+        port: typeof address === "object" && address ? address.port : config.port,
+        project: config.edge.defaultProject,
+        joinToken: config.edge.joinTokenGenerated ? config.edge.joinToken : "<EDGE_JOIN_TOKEN>",
+        generated: config.edge.joinTokenGenerated,
+        label: "QM Edge enabled in QM core",
+      }),
+    );
+    if (config.edge.journalDir)
+      console.log(
+        `Journal:    ${config.edge.journalDir} (restored sequence ${edgeHub.latestSequence(config.edge.defaultProject)})`,
+      );
+    if (!config.edge.joinTokenGenerated && config.edge.joinToken.length < 16)
+      console.warn(
+        "[qm] EDGE_JOIN_TOKEN is shorter than 16 characters; anyone who can reach this port can guess it more easily",
+      );
+  }
 });
 
 if (config.deployAppsDomain) {
@@ -196,6 +220,7 @@ function shutdown(signal: string): void {
   void built.scheduler.stop().catch((e: unknown) => console.error("[qm] scheduler stop failed:", errMessage(e)));
   built.suggestedActivityMaintenance.stop();
   built.deploymentLayerRefresh.stop();
+  closeEdgeWebSocket(server);
   server.close();
   server.closeIdleConnections();
   stopWithBackstop(

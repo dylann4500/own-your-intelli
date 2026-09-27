@@ -36,6 +36,12 @@ const STATUS_BY_CODE: Record<EdgeErrorCode, number> = {
   rate_limited: 429,
 };
 
+const RESERVED_ACTOR_PREFIXES = ["qm-agent:", "qm-user:"];
+
+export function isReservedActorId(id: string): boolean {
+  return RESERVED_ACTOR_PREFIXES.some((prefix) => id.startsWith(prefix));
+}
+
 function fail(status: number, error: string, message: string): EdgeApiResponse {
   return { status, body: { error, message } };
 }
@@ -58,6 +64,11 @@ function resolveActor(req: EdgeApiRequest): EdgeActor {
   const raw = isRecord(req.body) ? req.body.actor : undefined;
   const parsed = edgeActor.safeParse(raw);
   if (!parsed.success) throw new EdgeProtocolError("invalid_message", `actor: ${formatIssues(parsed.error)}`);
+  if (isReservedActorId(parsed.data.id))
+    throw new EdgeProtocolError(
+      "actor_mismatch",
+      `actor id ${parsed.data.id} is reserved for identities QM core assigns`,
+    );
   return parsed.data;
 }
 
