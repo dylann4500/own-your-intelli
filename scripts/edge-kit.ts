@@ -149,6 +149,7 @@ const html = `<!doctype html>
     <li><b>"invalid join token":</b> re-type the token above exactly, then press Connect again.</li>
     <li><b>Unity shows errors prefixed [QM Edge]:</b> open Window &rarr; QM Edge to see the last error; Disconnect then Connect.</li>
     <li>The URL starts with <code>ws://</code>, not <code>http://</code>, and ends with <code>/edge/ws</code>.</li>
+    <li><b>The hub was restarted and you see duplicate objects:</b> Unity: Disconnect, <b>File &rarr; New Scene</b>, Connect. Terminal node: quit and run the command again.</li>
   </ul>
 </main>
 <script>
