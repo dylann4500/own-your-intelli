@@ -143,11 +143,9 @@ test("dedup: a duplicate operation id is committed once and acknowledged as dupl
     const op = operation("Dylan");
     dylan.send({ type: "submitOperation", operation: op });
     dylan.send({ type: "submitOperation", operation: op });
-    const acks = [
-      await dylan.waitFor("operationAck", (a) => !a.duplicate),
-      await dylan.waitFor("operationAck", (a) => a.duplicate),
-    ];
-    assert.equal(acks[0].sequence, acks[1].sequence);
+    const first = await dylan.waitFor("operationAck", (a) => !a.duplicate);
+    const second = await dylan.waitFor("operationAck", (a) => a.duplicate);
+    assert.equal(first.sequence, second.sequence);
     await settle();
     assert.equal(aiden.messages.filter((m) => m.type === "committedOperation").length, 1);
     assert.equal(running.hub.latestSequence("unity-demo"), 1);

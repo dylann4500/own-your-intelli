@@ -55,6 +55,8 @@ ENV VIRTUAL_ENV=/opt/agent-venv
 
 COPY fly/tools/x-api /usr/local/bin/x-api
 RUN chmod +x /usr/local/bin/x-api
+COPY fly/tools/qm-edge /usr/local/bin/qm-edge
+RUN chmod +x /usr/local/bin/qm-edge
 ARG INSTALL_BROWSER_ENGINE=0
 ARG BROWSER_USE_VERSION=0.12.9
 RUN if [ "$INSTALL_BROWSER_ENGINE" = "1" ]; then \

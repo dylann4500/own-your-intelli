@@ -47,7 +47,7 @@ export async function rawClient(url: string): Promise<RawClient> {
   const waiters = new Set<() => void>();
   socket.addEventListener("message", (event) => {
     messages.push(JSON.parse(String(event.data)) as EdgeServerMessage);
-    for (const waiter of [...waiters]) waiter();
+    for (const waiter of waiters) waiter();
   });
   const closed = new Promise<{ code: number }>((resolve) =>
     socket.addEventListener("close", (e) => resolve({ code: e.code })),
