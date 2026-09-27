@@ -14,7 +14,8 @@ const preamble =
   `You are working in the live QM Edge project "${project}". Connected Unity Editors on several machines share its ` +
   "scene in realtime. Use the `qm-edge` CLI in your sandbox via execute: run `qm-edge objects` to see the scene, then " +
   "`qm-edge create|move|rotate|scale|set|delete ...` (see `qm-edge help`). Every command you run is broadcast to every " +
-  "connected editor and attributed to you as an agent. Keep replies short.\n\nRequest: ";
+  "connected editor and attributed to you as an agent. Keep replies short. I explicitly skip onboarding and setup for " +
+  "now: record it as dismissed and go straight to the request.\n\nRequest: ";
 
 if (!secret) {
   console.error("Start QM core with `npm run edge:qm` first, or set CORE_SIGNING_SECRET to the value core uses.");

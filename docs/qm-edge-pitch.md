@@ -14,7 +14,7 @@ Setup and troubleshooting are in [qm-edge-demo.md](qm-edge-demo.md). Architectur
 - [ ] Every Unity Editor shows **Window > QM Edge** connected, with display names set (Dylan, Aiden, …).
 - [ ] `npm run qm-edge -- peers` lists every Mac as `<name> — human — Unity — <device> — online`.
 - [ ] Dashboard is open on the presenter screen at `http://<hub-ip>:<port>/edge#token=demo-2468`. Both hub options serve it.
-- [ ] The QM agent console (`npm run edge:agent`) is open on the hub Mac. You have already answered its one-time setup question (`skip setup`), and `!run qm-edge status` succeeds. `npm run edge:qm` builds the sandbox image with the CLI the first time.
+- [ ] The QM agent console (`npm run edge:agent`) is open on the hub Mac. Warm it up with one request (for example `How many objects are in the scene?`) and check that `!run qm-edge status` succeeds. `npm run edge:qm` builds the sandbox image with the CLI the first time.
 - [ ] Clean up practice objects with `qm-edge delete --object …`, or restart the hub and reopen the saved scene everywhere.
 - [ ] The fake-node terminals for the backup plan are pre-typed in a second terminal tab on each Mac.
 
