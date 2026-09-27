@@ -38,8 +38,19 @@ const edgeEffect = z.enum(["create", "update", "delete", "none"]);
 export type EdgeEffect = z.infer<typeof edgeEffect>;
 
 const propertyKey = z.string().min(1).max(128).regex(printable, "property keys must not contain control characters");
+const MAX_PAYLOAD_DEPTH = 16;
+
+function withinDepth(value: unknown, depth: number): boolean {
+  if (typeof value !== "object" || value === null) return true;
+  if (depth >= MAX_PAYLOAD_DEPTH) return false;
+  const children = Array.isArray(value) ? value : Object.values(value);
+  return children.every((child) => withinDepth(child, depth + 1));
+}
+
 const edgeProperties = z
-  .record(propertyKey, z.json())
+  .unknown()
+  .refine((value) => withinDepth(value, 0), `payload must be nested at most ${MAX_PAYLOAD_DEPTH} levels deep`)
+  .pipe(z.record(propertyKey, z.json()))
   .refine((value) => Object.keys(value).length <= 256, "at most 256 properties per operation")
   .refine(
     (value) => byteLength(value) <= EDGE_MAX_PAYLOAD_BYTES,
@@ -69,7 +80,7 @@ export interface EdgeCommittedOperation extends EdgeOperation {
   actor: EdgeActor;
 }
 
-const workingOn = z
+export const edgeWorkingOn = z
   .strictObject({
     resourceType: edgeTypeName.optional(),
     resourceId: edgeId.optional(),
@@ -105,7 +116,7 @@ const leaveProjectMessage = z.strictObject({
 const presenceMessage = z.strictObject({
   type: z.literal("presence"),
   projectId: edgeProjectId,
-  workingOn: workingOn.optional(),
+  workingOn: edgeWorkingOn.optional(),
 });
 
 const submitOperationMessage = z.strictObject({
@@ -144,7 +155,7 @@ const edgeClientMessage = z.discriminatedUnion("type", [
 ]);
 export type EdgeClientMessage = z.infer<typeof edgeClientMessage>;
 export type EdgeAnnouncedResource = z.infer<typeof announcedResource>;
-export type EdgeWorkingOn = z.infer<typeof workingOn>;
+export type EdgeWorkingOn = z.infer<typeof edgeWorkingOn>;
 
 export interface EdgePresenceEntry {
   actorId: string;

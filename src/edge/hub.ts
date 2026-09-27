@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { constantTimeEqual } from "../util/crypto.ts";
+import { swallow } from "../util/errors.ts";
 import {
   EDGE_PROTOCOL_VERSION,
   EdgeProtocolError,
@@ -53,7 +54,7 @@ interface Member {
   connections: Set<EdgeConnection>;
 }
 
-const DEDUPE_LIMIT = 100_000;
+const MAX_PROPERTIES_PER_RESOURCE = 512;
 
 class EdgeProject {
   readonly id: string;
@@ -88,6 +89,7 @@ export class EdgeHub {
   private readonly onCommit: ((operation: EdgeCommittedOperation) => void) | undefined;
   private readonly projects = new Map<string, EdgeProject>();
   private readonly connections = new Set<EdgeConnection>();
+  private readonly rateWindows = new Map<string, { start: number; count: number }>();
 
   constructor(options: EdgeHubOptions) {
     this.joinToken = options.joinToken;
@@ -146,24 +148,33 @@ export class EdgeHub {
     if (operation.actorId !== actor.id) {
       throw new EdgeProtocolError("actor_mismatch", `operation actor ${operation.actorId} does not match ${actor.id}`);
     }
-    if (node && operation.nodeId && operation.nodeId !== node.id) {
-      throw new EdgeProtocolError("actor_mismatch", `operation node ${operation.nodeId} does not match ${node.id}`);
+    if (operation.nodeId !== undefined && operation.nodeId !== node?.id) {
+      throw new EdgeProtocolError(
+        "actor_mismatch",
+        `operation node ${operation.nodeId} does not match ${node?.id ?? "this connectionless actor"}`,
+      );
     }
     const project = this.ensureProject(projectId);
     const existing = project.committedIds.get(operation.id);
     if (existing) return { operation: existing, duplicate: true };
+    this.rateLimit(actor.id);
 
+    const { nodeId: _claimedNode, ...rest } = operation;
     const committed: EdgeCommittedOperation = {
-      ...operation,
-      nodeId: operation.nodeId ?? node?.id,
+      ...rest,
+      ...(node ? { nodeId: node.id } : {}),
       sequence: ++project.sequence,
       committedAt: this.now(),
       actor: { ...actor },
     };
     this.record(project, committed);
+    try {
+      this.onCommit?.(committed);
+    } catch (e) {
+      swallow("edge: journal append failed", e);
+    }
     this.touchPresence(project, actor, node, workingOnFor(project, committed));
     this.broadcast(project, { type: "committedOperation", operation: committed });
-    this.onCommit?.(committed);
     return { operation: committed, duplicate: false };
   }
 
@@ -173,6 +184,19 @@ export class EdgeHub {
       if (operation.sequence <= project.sequence || project.committedIds.has(operation.id)) continue;
       project.sequence = operation.sequence;
       this.record(project, operation);
+    }
+  }
+
+  private rateLimit(actorId: string): void {
+    const now = this.now();
+    let window = this.rateWindows.get(actorId);
+    if (!window || now - window.start >= 1000) {
+      window = { start: now, count: 0 };
+      this.rateWindows.set(actorId, window);
+    }
+    window.count++;
+    if (window.count > this.maxOpsPerSecond) {
+      throw new EdgeProtocolError("rate_limited", "too many operations per second; throttle updates");
     }
   }
 
@@ -199,7 +223,8 @@ export class EdgeHub {
         continue;
       }
       for (const [k, value] of Object.entries(resource.properties)) {
-        if (k in current.versions) continue;
+        if (Object.hasOwn(current.versions, k)) continue;
+        if (Object.keys(current.versions).length >= MAX_PROPERTIES_PER_RESOURCE) break;
         current.properties[k] = value;
         current.versions[k] = 0;
       }
@@ -247,6 +272,7 @@ export class EdgeHub {
 
   sweep(): void {
     const now = this.now();
+    for (const [actorId, window] of this.rateWindows) if (now - window.start > 10_000) this.rateWindows.delete(actorId);
     for (const project of this.projects.values()) {
       let changed = false;
       for (const [key, member] of project.members) {
@@ -301,8 +327,8 @@ export class EdgeHub {
   }
 
   handleLeave(connection: EdgeConnection, projectId: string): void {
+    if (!connection.joined.delete(projectId)) return;
     const project = this.projects.get(projectId);
-    connection.joined.delete(projectId);
     if (!project) return;
     project.subscribers.delete(connection);
     for (const member of project.members.values()) {
@@ -337,13 +363,9 @@ export class EdgeHub {
 
   private record(project: EdgeProject, committed: EdgeCommittedOperation): void {
     project.history.push(committed);
-    if (project.history.length > this.historyLimit)
-      project.history.splice(0, project.history.length - this.historyLimit);
     project.committedIds.set(committed.id, committed);
-    if (project.committedIds.size > DEDUPE_LIMIT) {
-      const oldest = project.committedIds.keys().next().value;
-      if (oldest !== undefined) project.committedIds.delete(oldest);
-    }
+    const excess = project.history.length - this.historyLimit;
+    if (excess > 0) for (const old of project.history.splice(0, excess)) project.committedIds.delete(old.id);
     reduce(project, committed);
   }
 
@@ -399,8 +421,6 @@ export class EdgeConnection {
   private readonly hub: EdgeHub;
   private readonly sink: EdgeSink;
   private readonly now: () => number;
-  private windowStart = 0;
-  private windowCount = 0;
   private closed = false;
 
   constructor(hub: EdgeHub, sink: EdgeSink, now: () => number) {
@@ -425,6 +445,7 @@ export class EdgeConnection {
   }
 
   handle(raw: unknown): void {
+    if (this.closed) return;
     let message: EdgeClientMessage;
     try {
       message = parseClientMessage(raw);
@@ -440,6 +461,10 @@ export class EdgeConnection {
       this.dispatch(message);
     } catch (e) {
       this.fail(e, message.type, message.type === "submitOperation" ? operationIdOf(message.operation) : undefined);
+      if (e instanceof EdgeProtocolError && e.code === "unauthorized") {
+        this.sink.close(4401, "invalid join token");
+        this.close();
+      }
     }
   }
 
@@ -448,6 +473,9 @@ export class EdgeConnection {
       case "hello":
         if (this.actor && this.actor.id !== message.actor.id) {
           throw new EdgeProtocolError("actor_mismatch", "a connection cannot change actors; reconnect instead");
+        }
+        if (this.actor && (this.node?.id ?? null) !== (message.node?.id ?? null)) {
+          throw new EdgeProtocolError("actor_mismatch", "a connection cannot change nodes; reconnect instead");
         }
         this.actor = message.actor;
         this.node = message.node ?? null;
@@ -496,7 +524,6 @@ export class EdgeConnection {
       case "submitOperation": {
         const actor = this.actor;
         if (!actor) throw new EdgeProtocolError("hello_required", "send hello before submitOperation");
-        this.rateLimit();
         const projectId = projectIdOf(message.operation);
         this.hub.joinedProject(this, projectId);
         const result = this.hub.submit(projectId, actor, this.node, message.operation);
@@ -508,18 +535,6 @@ export class EdgeConnection {
         });
         return;
       }
-    }
-  }
-
-  private rateLimit(): void {
-    const now = this.now();
-    if (now - this.windowStart >= 1000) {
-      this.windowStart = now;
-      this.windowCount = 0;
-    }
-    this.windowCount++;
-    if (this.windowCount > this.hub.maxOpsPerSecond) {
-      throw new EdgeProtocolError("rate_limited", "too many operations per second; throttle updates");
     }
   }
 
@@ -580,6 +595,10 @@ function reduce(project: EdgeProject, op: EdgeCommittedOperation): void {
     resource.exists = false;
     resource.deletedSequence = op.sequence;
   } else if (op.effect === "create") {
+    if (!resource.exists) {
+      resource.properties = {};
+      resource.versions = {};
+    }
     resource.exists = true;
     resource.createdSequence = op.sequence;
     resource.deletedSequence = null;
@@ -589,6 +608,8 @@ function reduce(project: EdgeProject, op: EdgeCommittedOperation): void {
   if (op.effect !== "delete") {
     for (const [k, value] of Object.entries(op.payload)) {
       if ((resource.versions[k] ?? -1) >= op.sequence) continue;
+      if (!Object.hasOwn(resource.versions, k) && Object.keys(resource.versions).length >= MAX_PROPERTIES_PER_RESOURCE)
+        continue;
       resource.properties[k] = value;
       resource.versions[k] = op.sequence;
     }

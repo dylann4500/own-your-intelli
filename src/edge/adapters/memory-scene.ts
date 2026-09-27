@@ -127,6 +127,17 @@ export class MemorySceneAdapter implements EdgeAdapter {
     };
   }
 
+  private currentChange(change: EdgeLocalChange): EdgeLocalChange | null {
+    if (change.effect === "delete") return this.objects.has(change.resourceId) ? null : change;
+    const object = this.objects.get(change.resourceId);
+    if (!object) return null;
+    const keys = change.effect === "create" ? Object.keys(object.properties) : Object.keys(change.payload);
+    const payload = Object.fromEntries(
+      keys.filter((k) => Object.hasOwn(object.properties, k)).map((k) => [k, object.properties[k] ?? null]),
+    );
+    return { ...change, payload };
+  }
+
   private require(id: string): SceneObject {
     const object = this.objects.get(id);
     if (!object) throw new Error(`no object ${id}`);
@@ -136,9 +147,10 @@ export class MemorySceneAdapter implements EdgeAdapter {
   private notify(change: EdgeLocalChange): void {
     if (this.timing !== "async") for (const observer of this.observers) observer(structuredClone(change));
     if (this.timing !== "sync") {
-      const copy = structuredClone(change);
       setImmediate(() => {
-        for (const observer of this.observers) observer(structuredClone(copy));
+        const current = this.currentChange(change);
+        if (!current) return;
+        for (const observer of this.observers) observer(structuredClone(current));
       });
     }
   }

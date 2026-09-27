@@ -4,6 +4,7 @@ import {
   EdgeProtocolError,
   edgeActor,
   edgeProjectId,
+  edgeWorkingOn,
   formatIssues,
   type EdgeActor,
   type EdgeErrorCode,
@@ -73,13 +74,9 @@ function resolveActor(req: EdgeApiRequest): EdgeActor {
 }
 
 function workingOnFrom(body: unknown): EdgeWorkingOn {
-  if (!isRecord(body) || !isRecord(body.workingOn)) return null;
-  const { resourceType, resourceId, label } = body.workingOn;
-  return {
-    ...(typeof resourceType === "string" ? { resourceType: resourceType.slice(0, 64) } : {}),
-    ...(typeof resourceId === "string" ? { resourceId: resourceId.slice(0, 256) } : {}),
-    ...(typeof label === "string" ? { label: label.slice(0, 120) } : {}),
-  };
+  if (!isRecord(body)) return null;
+  const parsed = edgeWorkingOn.safeParse(body.workingOn ?? null);
+  return parsed.success ? parsed.data : null;
 }
 
 export function handleEdgeApi(hub: EdgeHub, req: EdgeApiRequest): EdgeApiResponse {

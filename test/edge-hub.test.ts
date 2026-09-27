@@ -243,7 +243,7 @@ test("actors cannot submit operations as someone else", async () => {
 });
 
 test("history: recent events query supports after/limit and reports truncation", () => {
-  const hub = new EdgeHub({ joinToken: EDGE_TEST_TOKEN, historyLimit: 100 });
+  const hub = new EdgeHub({ joinToken: EDGE_TEST_TOKEN, historyLimit: 100, maxOpsPerSecond: 1000 });
   const actor = { id: "dylan", displayName: "Dylan", type: "human" as const };
   for (let i = 0; i < 150; i++)
     hub.submit("unity-demo", actor, null, operation("Dylan", { nodeId: undefined, payload: { position: [i, 0, 0] } }));

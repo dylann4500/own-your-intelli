@@ -57,11 +57,12 @@ export class EdgeNodeSession {
   private wanted = false;
   private attempt = 0;
   private applyingRemote = false;
+  private fullResync = false;
   private readonly synced = new Map<string, Map<string, EdgeJson>>();
   private readonly existence = new Map<string, boolean>();
   private readonly pending = new Map<string, string>();
   private readonly listeners = new Set<Listener>();
-  private readonly outbox: EdgeOperation[] = [];
+  private readonly inflight = new Map<string, EdgeOperation>();
   private stopObserving: (() => void) | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -162,11 +163,31 @@ export class EdgeNodeSession {
   }
 
   private submit(operation: EdgeOperation): void {
-    if (!this.joined) {
-      this.outbox.push(operation);
+    this.inflight.set(operation.id, operation);
+    if (this.joined) this.sendRaw({ type: "submitOperation", operation });
+  }
+
+  private settle(operationId: string): void {
+    this.inflight.delete(operationId);
+    this.clearPending(operationId);
+  }
+
+  private resync(): void {
+    this.fullResync = true;
+    this.sendRaw({ type: "joinProject", projectId: this.options.projectId, token: this.options.token });
+  }
+
+  private rejected(operationId: string, code: string): void {
+    const operation = this.inflight.get(operationId);
+    if (!operation) return;
+    if (code === "rate_limited") {
+      setTimeout(() => {
+        if (this.inflight.has(operationId) && this.joined) this.sendRaw({ type: "submitOperation", operation });
+      }, 1000).unref?.();
       return;
     }
-    this.sendRaw({ type: "submitOperation", operation });
+    this.settle(operationId);
+    this.resync();
   }
 
   private receive(message: EdgeServerMessage): void {
@@ -175,19 +196,19 @@ export class EdgeNodeSession {
         this.joined = true;
         this.members = message.members;
         this.history = message.history;
+        if (message.latestSequence < this.lastSequence) this.fullResync = true;
         this.pending.clear();
-        this.applySnapshot(message);
-        this.lastSequence = Math.max(this.lastSequence, message.latestSequence);
+        for (const operation of this.inflight.values()) this.markPending(operation);
+        this.applySnapshot(message, this.fullResync);
+        this.fullResync = false;
+        this.lastSequence = message.latestSequence;
         this.sendRaw({
           type: "announceResources",
           projectId: this.options.projectId,
           adapter: this.options.adapter.adapterId,
           resources: this.options.adapter.describeResources(),
         });
-        for (const operation of this.outbox.splice(0)) {
-          this.markPending(operation);
-          this.submit(operation);
-        }
+        for (const operation of this.inflight.values()) this.sendRaw({ type: "submitOperation", operation });
         break;
       case "presence":
         this.members = message.members;
@@ -195,9 +216,12 @@ export class EdgeNodeSession {
       case "committedOperation":
         this.handleCommitted(message.operation);
         break;
+      case "operationAck":
+        this.settle(message.operationId);
+        break;
       case "error":
         this.lastError = `${message.code}: ${message.message}`;
-        if (message.operationId) this.clearPending(message.operationId);
+        if (message.operationId) this.rejected(message.operationId, message.code);
         break;
       default:
         break;
@@ -205,18 +229,20 @@ export class EdgeNodeSession {
     for (const listener of this.listeners) listener(message);
   }
 
-  private applySnapshot(message: Extract<EdgeServerMessage, { type: "joined" }>): void {
+  private applySnapshot(message: Extract<EdgeServerMessage, { type: "joined" }>, full: boolean): void {
     const operations = snapshotOperations(message.resources, this.options.adapter.adapterId, {
       projectId: message.projectId,
       committedAt: Date.now(),
     });
     for (const operation of operations) {
-      if (operation.sequence <= this.lastSequence) continue;
+      if (!full && operation.sequence <= this.lastSequence) continue;
       this.applyRemote(operation);
     }
   }
 
   private handleCommitted(operation: EdgeCommittedOperation): void {
+    const own = operation.nodeId === this.options.node.id;
+    if (own) this.settle(operation.id);
     if (operation.sequence <= this.lastSequence) {
       this.stats.skippedStale++;
       return;
@@ -224,9 +250,8 @@ export class EdgeNodeSession {
     this.lastSequence = operation.sequence;
     this.history.push(operation);
     if (this.history.length > 500) this.history.splice(0, this.history.length - 500);
-    if (operation.nodeId === this.options.node.id) {
+    if (own) {
       this.stats.ownEchoes++;
-      this.clearPending(operation.id);
       return;
     }
     if (operation.adapter !== this.options.adapter.adapterId) return;

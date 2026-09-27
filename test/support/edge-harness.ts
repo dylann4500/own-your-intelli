@@ -12,10 +12,10 @@ export interface RunningHub {
   close(): Promise<void>;
 }
 
-export async function startHub(options: Partial<EdgeHubOptions> = {}): Promise<RunningHub> {
+export async function startHub(options: Partial<EdgeHubOptions> = {}, listenPort = 0): Promise<RunningHub> {
   const hub = new EdgeHub({ joinToken: EDGE_TEST_TOKEN, ...options });
   const { server, websocket } = createEdgeServer(hub);
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => server.listen(listenPort, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
   return {
     hub,

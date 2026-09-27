@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { MemorySceneAdapter, type SceneObject } from "../src/edge/adapters/memory-scene.ts";
 import { runCli } from "../src/edge/cli.ts";
@@ -11,6 +11,11 @@ function baseline(): SceneObject[] {
     { id: "light-1", properties: { name: "Main Light", "light.intensity": 1, position: [0, 3, 0] } },
   ];
 }
+
+const liveSessions: EdgeNodeSession[] = [];
+afterEach(() => {
+  for (const session of liveSessions.splice(0)) session.stop();
+});
 
 async function node(
   running: RunningHub,
@@ -26,6 +31,7 @@ async function node(
     adapter: scene,
     reconnectDelaysMs: [50],
   });
+  liveSessions.push(session);
   await session.start();
   return { session, scene };
 }
