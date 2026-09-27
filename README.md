@@ -23,6 +23,36 @@ It's built with open source in mind. Pick your own harness and model and switch 
 them. Pi, OpenCode, Codex, and Claude Code all drive the same core, so a deployment
 isn't tied to any single vendor.
 
+## QM Edge
+
+**QM makes intelligence multiplayer. QM Edge makes the environments that intelligence works in multiplayer.**
+
+QM Edge is a realtime semantic state and event layer. It connects QM, people, agents and local applications (Edge Nodes) to one shared live project:
+
+- server-ordered operations
+- presence
+- attribution
+- history and catch-up
+
+Unity is the first adapter. The core is generic, and CAD, Blender, Unreal, IDEs and robotics are future adapters. It is not file sync, remote desktop or a Git replacement.
+
+```bash
+npm ci
+EDGE_JOIN_TOKEN=demo-2468 EDGE_PORT=8787 npm run edge:dev     # hub on :8787 (or: npm run edge:qm, inside QM core on :8080 with the agent)
+npm run edge:fake-client -- --url ws://<hub-ip>:8787/edge/ws --token demo-2468 --name Aiden   # or the Unity package in adapters/unity/com.qm.edge
+QM_EDGE_URL=http://localhost:8787 QM_EDGE_TOKEN=demo-2468 npm run qm-edge -- status
+open "http://localhost:8787/edge#token=demo-2468"             # live dashboard
+```
+
+Docs: [architecture](docs/qm-edge-architecture.md) · [four-Mac demo](docs/qm-edge-demo.md) · [demo script](docs/qm-edge-pitch.md)
+
+```
+Git:     durable history, branching, code review, checkpoints
+QM Edge: live application state, presence, human/agent coordination, semantic operations
+```
+
+Live multiplayer work → eventually checkpoint → Git.
+
 ## Features
 
 - **Personal and shared scopes.** People customize the agent to be _theirs_, and still
