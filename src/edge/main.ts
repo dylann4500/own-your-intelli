@@ -6,8 +6,8 @@ import { createEdgeServer } from "./server.ts";
 
 function main(): void {
   const config = parseEdgeEnv(process.env, { enabledByDefault: true });
-  const port = Number(process.env.EDGE_PORT ?? process.env.PORT ?? EDGE_DEFAULT_PORT);
-  const host = process.env.EDGE_HOST ?? "0.0.0.0";
+  const port = Number(process.env.EDGE_PORT || process.env.PORT || EDGE_DEFAULT_PORT);
+  const host = process.env.EDGE_HOST || "0.0.0.0";
   const hub = createConfiguredEdgeHub(config);
   const { server, websocket } = createEdgeServer(hub);
   server.on("error", (e) => {

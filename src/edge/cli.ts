@@ -109,7 +109,8 @@ async function call(endpoint: Endpoint, method: "GET" | "POST", path: string, bo
   }
   if (!response.ok) {
     const detail = parsed as { error?: string; message?: string };
-    throw new Error(`${response.status} ${detail.error ?? "error"}: ${detail.message ?? text}`);
+    const hint = response.status === 401 ? " (check QM_EDGE_TOKEN matches the hub's join token)" : "";
+    throw new Error(`${response.status} ${detail.error ?? "error"}: ${detail.message ?? text}${hint}`);
   }
   return parsed;
 }
@@ -118,7 +119,7 @@ function num(values: Record<string, string | boolean | undefined>, key: string):
   const raw = values[key];
   if (raw === undefined || typeof raw === "boolean") return undefined;
   const value = Number(raw);
-  if (!Number.isFinite(value)) throw new UsageError(`--${key} must be a number`);
+  if (raw.trim() === "" || !Number.isFinite(value)) throw new UsageError(`--${key} must be a number`);
   return value;
 }
 
@@ -140,19 +141,34 @@ function asVec3(value: EdgeJson | undefined, fallback: Vec3): Vec3 {
   return fallback;
 }
 
+function numberList(raw: string): number[] {
+  return raw
+    .trim()
+    .replace(/^\[|\]$/g, "")
+    .split(/[\s,]+/)
+    .filter(Boolean)
+    .map(Number);
+}
+
 function parseValue(property: string, raw: string): EdgeJson {
   const trimmed = raw.trim();
+  if (["position", "rotation", "scale"].includes(property)) {
+    const parts = numberList(trimmed);
+    if (parts.length === 3 && parts.every(Number.isFinite)) return parts;
+    throw new UsageError(`${property} must be three numbers, e.g. --value "1,2,3"`);
+  }
+  if (property === "intensity" || property === "light.intensity") {
+    const value = Number(trimmed);
+    if (trimmed !== "" && Number.isFinite(value)) return value;
+    throw new UsageError("intensity must be a number, e.g. --value 2");
+  }
   if (property === "color" || property === "light.color") {
     const hex = /^#?([0-9a-f]{6})$/i.exec(trimmed);
     if (hex?.[1]) {
       const n = Number.parseInt(hex[1], 16);
       return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, 1];
     }
-    const parts = trimmed
-      .replace(/^\[|\]$/g, "")
-      .split(/[\s,]+/)
-      .filter(Boolean)
-      .map(Number);
+    const parts = numberList(trimmed);
     if ((parts.length === 3 || parts.length === 4) && parts.every(Number.isFinite)) {
       return parts.length === 3 ? [...parts, 1] : parts;
     }
@@ -164,6 +180,15 @@ function parseValue(property: string, raw: string): EdgeJson {
   } catch {
     return raw;
   }
+}
+
+function cleanLabel(label: string | undefined): string | undefined {
+  const cleaned = label
+    ?.replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .trim()
+    .slice(0, 160)
+    .trim();
+  return cleaned || undefined;
 }
 
 function compactName(name: string): string {
@@ -209,7 +234,7 @@ async function submit(
       action: change.action,
       effect: change.effect,
       payload: change.payload,
-      ...(change.label ? { label: change.label } : {}),
+      ...(cleanLabel(change.label) ? { label: cleanLabel(change.label) } : {}),
       clientTimestamp: Date.now(),
     },
   })) as { operation: EdgeCommittedOperation; duplicate: boolean };
@@ -368,6 +393,7 @@ export async function runCli(argv: string[], env: Env): Promise<number> {
     }
     case "events": {
       const limit = num(values, "limit") ?? 20;
+      if (!Number.isInteger(limit) || limit < 1) throw new UsageError("--limit must be a positive integer");
       const body = (await call(
         endpoint,
         "GET",
@@ -426,6 +452,9 @@ export async function runCli(argv: string[], env: Env): Promise<number> {
     case "move":
     case "rotate":
     case "scale": {
+      if ((["x", "y", "z"] as const).every((axis) => values[axis] === undefined)) {
+        throw new UsageError(`${command} needs at least one of --x, --y, --z`);
+      }
       const target = await resolveObject(endpoint, project, str(values, "object", true) ?? "");
       const property = ({ move: "position", rotate: "rotation", scale: "scale" } as const)[command];
       const current = asVec3(target[property], property === "scale" ? [1, 1, 1] : [0, 0, 0]);

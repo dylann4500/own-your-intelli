@@ -54,6 +54,8 @@ export const EDGE_DASHBOARD_HTML = `<!doctype html>
   function store(key, value) { try { localStorage.setItem(key, value); } catch (e) { return; } }
   projectInput.value = params.get("project") || stored("qmEdge.project", "unity-demo");
   tokenInput.value = params.get("token") || stored("qmEdge.token", "");
+  if (params.get("token")) store("qmEdge.token", tokenInput.value);
+  if (location.hash) history.replaceState(null, "", location.pathname + location.search);
   var lastTop = 0;
   function esc(v) { return String(v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function vec(v) { return Array.isArray(v) ? "(" + v.map(function (n) { return typeof n === "number" ? Math.round(n * 100) / 100 : n; }).join(", ") + ")" : ""; }
@@ -75,14 +77,14 @@ export const EDGE_DASHBOARD_HTML = `<!doctype html>
     document.getElementById("peers").innerHTML = peers.length ? peers.map(function (m) {
       var where = m.adapter === "unity" ? "Unity" : (m.adapter || "");
       var working = m.workingOn && (m.workingOn.label || m.workingOn.resourceId);
-      return '<div class="peer ' + m.status + '"><span class="dot"></span><div><div><strong>' + esc(m.displayName) + '</strong> <span class="badge ' + m.actorType + '">' + m.actorType + '</span> ' + esc(where) + '</div><div class="muted">' + esc(m.status) + (m.deviceName ? " · " + esc(m.deviceName) : "") + (working && m.status === "online" ? " · working on " + esc(working) : "") + '</div></div></div>';
+      return '<div class="peer ' + esc(m.status) + '"><span class="dot"></span><div><div><strong>' + esc(m.displayName) + '</strong> <span class="badge ' + esc(m.actorType) + '">' + esc(m.actorType) + '</span> ' + esc(where) + '</div><div class="muted">' + esc(m.status) + (m.deviceName ? " · " + esc(m.deviceName) : "") + (working && m.status === "online" ? " · working on " + esc(working) : "") + '</div></div></div>';
     }).join("") : '<span class="muted">No peers yet</span>';
     var rows = coalesce(events.operations).slice(-40).reverse();
     var top = events.latestSequence;
     document.getElementById("events").innerHTML = rows.length ? rows.map(function (row, i) {
       var op = row.op;
       var fresh = i === 0 && top > lastTop && lastTop !== 0 ? " fresh" : "";
-      return '<div class="event' + fresh + '"><span class="muted">#' + op.sequence + '</span><span class="' + op.actor.type + '">' + esc(op.actor.displayName) + '</span><span>' + esc(op.label || op.action + " " + op.resourceId) + (row.count > 1 ? ' <span class="muted">x' + row.count + '</span>' : "") + '</span></div>';
+      return '<div class="event' + fresh + '"><span class="muted">#' + op.sequence + '</span><span class="' + esc(op.actor.type) + '">' + esc(op.actor.displayName) + '</span><span>' + esc(op.label || op.action + " " + op.resourceId) + (row.count > 1 ? ' <span class="muted">x' + row.count + '</span>' : "") + '</span></div>';
     }).join("") : '<span class="muted">No events yet</span>';
     lastTop = top;
     var res = resources.resources;

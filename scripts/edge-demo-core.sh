@@ -12,20 +12,18 @@ if ! docker info >/dev/null 2>&1; then
   fi
 fi
 
-if ! docker image inspect qm-sandbox-local:latest >/dev/null 2>&1; then
-  echo "==> building the QM sandbox image with qm-edge (one time)"
-  npm run edge:sandbox:build
-fi
+echo "==> building the QM sandbox image with the current qm-edge (cached after the first run)"
+npm run --silent edge:sandbox:build >/dev/null
 
 mkdir -p data
 if [[ -z "${CORE_SIGNING_SECRET:-}" ]]; then
-  [[ -s data/edge-demo-secret ]] || openssl rand -hex 32 > data/edge-demo-secret
+  [[ -s data/edge-demo-secret ]] || (umask 077 && openssl rand -hex 32 > data/edge-demo-secret)
   CORE_SIGNING_SECRET="$(cat data/edge-demo-secret)"
 fi
 
 export CORE_SIGNING_SECRET
 export EDGE_ENABLED=1
-export EDGE_JOIN_TOKEN="${EDGE_JOIN_TOKEN:-edge-demo}"
+export EDGE_JOIN_TOKEN="${EDGE_JOIN_TOKEN:-$(openssl rand -hex 4)}"
 export EDGE_PROJECT="${EDGE_PROJECT:-unity-demo}"
 export PORT="${PORT:-8080}"
 export HARNESS="${HARNESS:-codex}"

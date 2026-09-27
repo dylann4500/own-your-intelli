@@ -29,6 +29,16 @@ function pathnameOf(url: string | undefined): string {
   }
 }
 
+function sameOrigin(req: IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === req.headers.host;
+  } catch {
+    return false;
+  }
+}
+
 export function attachEdgeWebSocket(
   server: Server,
   hub: EdgeHub,
@@ -84,6 +94,10 @@ export function attachEdgeWebSocket(
       if (server.listenerCount("upgrade") === 1) {
         socket.end("HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
       }
+      return;
+    }
+    if (!sameOrigin(req)) {
+      socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
       return;
     }
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));

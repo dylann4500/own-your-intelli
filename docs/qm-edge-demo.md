@@ -56,9 +56,9 @@ EDGE_JOIN_TOKEN=demo-2468 npm run edge:qm
 `npm run edge:qm` (`scripts/edge-demo-core.sh`) does this:
 
 - Checks that Docker is running. If it is not, it starts colima when that is installed, and otherwise exits.
-- Builds the sandbox image once with `npm run edge:sandbox:build` if `qm-sandbox-local:latest` does not exist yet.
+- Rebuilds the sandbox image with `npm run edge:sandbox:build` on every start so it always carries the current `qm-edge` (Docker caches it, so after the first run this takes seconds).
 - Creates `CORE_SIGNING_SECRET` in `data/edge-demo-secret` (git-ignored) unless you set one.
-- Sets `EDGE_ENABLED=1`, `EDGE_JOIN_TOKEN` (default `edge-demo`), `EDGE_PROJECT` (default `unity-demo`), `PORT` (default `8080`), `HARNESS` (default `codex`), `SANDBOX_BACKEND=local`, and `PUBLIC_API_URL=http://host.docker.internal:<PORT>` so the sandbox can reach core.
+- Sets `EDGE_ENABLED=1`, `EDGE_JOIN_TOKEN` (default: a random 8-character token printed at startup), `EDGE_PROJECT` (default `unity-demo`), `PORT` (default `8080`), `HARNESS` (default `codex`), `SANDBOX_BACKEND=local`, and `PUBLIC_API_URL=http://host.docker.internal:<PORT>` so the sandbox can reach core.
 - Prints the port, project, join token and dashboard link (`==> dashboard http://localhost:8080/edge#token=…`), then runs `node --env-file-if-exists=.env src/index.ts`. Values from the command line and the script win over `.env`, so a `PORT` or `HARNESS` in `.env` is ignored. Pass them on the command line instead, for example `PORT=9090 HARNESS=pi npm run edge:qm`.
 
 The natural-language agent uses the `HARNESS` login on the hub Mac, for example `~/.codex/auth.json` for the default `codex`. Set `HARNESS=…` to use another harness you have set up.
