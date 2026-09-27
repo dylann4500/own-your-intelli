@@ -1,0 +1,8 @@
+{
+  "name": "com.qm.edge",
+  "displayName": "QM Edge",
+  "version": "0.1.0",
+  "unity": "2021.3",
+  "description": "Joins the Unity Editor to a QM Edge hub as an Edge Node so people and agents share live scene state: GameObject creation, deletion, transforms, names and light settings sync in realtime with presence and an event history.",
+  "keywords": ["qm", "edge", "collaboration", "realtime", "multiplayer-editing"]
+}
