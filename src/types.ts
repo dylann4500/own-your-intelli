@@ -1,0 +1,772 @@
+import type { ResolvedSecurityPolicy } from "./security/security-posture.ts";
+import type { SharingPosture } from "./resolution/sharing-posture.ts";
+
+export type PrincipalType = "internal" | "guest";
+
+export const PRINCIPAL_TYPES = ["internal", "guest"] as const satisfies readonly PrincipalType[];
+
+export function isPrincipalType(value: unknown): value is PrincipalType {
+  return typeof value === "string" && (PRINCIPAL_TYPES as readonly string[]).includes(value);
+}
+
+export interface Principal {
+  id: string;
+  type: PrincipalType;
+  teamIds?: string[];
+  displayName?: string;
+}
+
+const SCOPE_KINDS = ["personal", "channel", "team", "org", "group"] as const;
+export type ScopeKind = (typeof SCOPE_KINDS)[number];
+
+export type ScopeId = string;
+
+function isScopeKind(s: string): s is ScopeKind {
+  return (SCOPE_KINDS as readonly string[]).includes(s);
+}
+
+export function scopeId(kind: ScopeKind, ref: string): ScopeId {
+  return `${kind}:${ref}`;
+}
+
+export function personalScope(principalId: string): ScopeId {
+  return scopeId("personal", principalId);
+}
+
+export function parseScopeId(id: ScopeId): { kind: ScopeKind | null; ref: string } {
+  const sep = id.indexOf(":");
+  if (sep < 0) return { kind: null, ref: "" };
+  const raw = id.slice(0, sep);
+  return { kind: isScopeKind(raw) ? raw : null, ref: id.slice(sep + 1) };
+}
+
+export function isManageableCreationScope(id: ScopeId | undefined): boolean {
+  if (!id) return false;
+  const { kind } = parseScopeId(id);
+  return kind === "channel" || kind === "team";
+}
+
+export function isSharedScope(id: ScopeId | undefined): boolean {
+  if (!id) return false;
+  const { kind } = parseScopeId(id);
+  return kind === "channel" || kind === "group";
+}
+
+export type ConversationKind = "dm" | "channel" | "group";
+
+export interface Conversation {
+  kind: ConversationKind;
+  threadRef: string;
+  channelRef?: string;
+  channelName?: string;
+  audience: Principal[];
+  isPrivate?: boolean;
+  isMpim?: boolean;
+  publishMembers?: Principal[];
+}
+
+export type SessionType = "dm" | "channel" | "group";
+
+export interface SpawnMeta {
+  surfaceTools?: boolean;
+  deliveryCandidates?: TurnRequest["deliveryCandidates"];
+  origin?: TurnOrigin;
+  unattendedGrants?: string[];
+  openFingerprint?: string;
+  scopeVersion?: string;
+  sessionParticipantIds?: readonly string[];
+  surface: string;
+  conversation: Conversation;
+  actor: Principal;
+  deliveryTarget?: string;
+  timezone?: string;
+  readOnly?: boolean;
+  model?: string;
+  harness?: string;
+  thinkingLevel?: string;
+  fastMode?: boolean;
+}
+
+export interface SessionStatus {
+  emoji: string;
+  text: string;
+}
+
+export interface Session {
+  id: string;
+  type: SessionType;
+  scopeId: ScopeId;
+  threadRef: string;
+  surface?: string;
+  createdAt: number;
+  channelName?: string;
+  title?: string | null;
+  archived?: boolean;
+  pinned?: boolean;
+  color?: string;
+  status?: SessionStatus | null;
+  forkedFrom?: { sessionId: string; title?: string | null };
+  forkBoundarySeq?: number;
+  parentSessionId?: string;
+  spawnMeta?: SpawnMeta;
+  lastActivityAt?: number;
+  hasEntries?: boolean;
+  working?: boolean;
+  awaitingInput?: boolean;
+  backgroundJobs?: number;
+  watches?: number;
+  crons?: number;
+}
+
+export type EntryType =
+  | "user"
+  | "assistant"
+  | "thinking"
+  | "text_start"
+  | "text"
+  | "tool_call"
+  | "tool_result"
+  | "soul"
+  | "system"
+  | "delivery"
+  | "approval_request"
+  | "approval_resolved";
+
+export interface SessionEntry {
+  sessionId: string;
+  seq: number;
+  parentSeq: number | null;
+  type: EntryType;
+  payload: unknown;
+  scopeLabel: ScopeId;
+  createdAt: number;
+}
+
+type LayerMode = "ro" | "rw";
+
+export interface WorkspaceLayer {
+  scopeId: ScopeId;
+  mountPath: string;
+  mode: LayerMode;
+}
+
+export interface Resolution {
+  layers: WorkspaceLayer[];
+  systemPrompt: string;
+  egress: EgressPolicy;
+  commandPolicy: CommandPolicy;
+  securityPolicy: ResolvedSecurityPolicy;
+  sharingPosture?: SharingPosture;
+  approvalGrantModes: ApprovalGrantModes;
+  orgScopeId: ScopeId;
+  grantedHandles: GrantedHandle[];
+}
+
+export type Permission = "read" | "write";
+
+export interface Grant {
+  ownerScopeId: ScopeId;
+  ref: string;
+  granteeScopeId: ScopeId;
+  permission: Permission;
+  grantedBy: string;
+}
+
+export interface GrantedHandle {
+  carried?: true;
+  handlePath: string;
+  ownerScopeId: ScopeId;
+  ownerPath: string;
+  permission: Permission;
+}
+
+export interface RecipientConsent {
+  recipientId: string;
+  status: "pending" | "accepted" | "declined";
+  decidedAt?: number;
+}
+
+export interface TriggerBase {
+  id: string;
+  ownerScopeId: ScopeId;
+  owner: string;
+  createdBy: string;
+  ownerConsentedAt?: number;
+  destination?: Destination;
+  enabled: boolean;
+  createdAt: number;
+  lastFiredAt?: number;
+  recipientConsent?: RecipientConsent;
+}
+
+export interface Destination {
+  slackAccountId?: string;
+  slackTeamId?: string;
+  keychainAskId?: string;
+  deploymentAccess?: { deploymentId: string; requesterId: string };
+  commandApprovalId?: string;
+  type: string;
+  target: string;
+  audienceScopeId?: ScopeId;
+  onBehalfOf?: string;
+  relaySender?: string;
+  threadTs?: string;
+  editRef?: string;
+  taskList?: Array<{
+    id: string;
+    title: string;
+    status: "pending" | "in_progress" | "completed" | "skipped" | "failed";
+  }>;
+  unfurlLinks?: boolean;
+  react?: { messageTs: string; emoji: string };
+  delete?: { messageTs: string };
+  pin?: { messageTs: string; remove?: boolean };
+  identity?: string;
+  debugFooter?: string;
+  webTranscript?: { kind: "reply" } | { kind: "turn_failure"; notBefore: number; runId?: string };
+}
+
+export interface CandidateDestination extends Destination {
+  key: string;
+  label: string;
+}
+
+export type BackgroundWakeTrigger = "cron" | "webhook" | "monitor" | (string & {});
+
+export interface DeliveryProvenance {
+  sourceTitle?: string;
+  trigger: BackgroundWakeTrigger;
+  surface: string;
+  fireKey: string;
+  sourceScopeId: ScopeId;
+  sourceThreadRef: string;
+  sourceSessionId?: string;
+  sourceUserSeq?: number;
+  sourceAssistantEntrySeq?: number;
+}
+
+export interface CronSchedule {
+  cron?: string;
+  timezone?: string;
+  everyMs?: number;
+  firstFireAt?: number;
+}
+
+export interface CronFireLogEntry {
+  fireKey: string;
+  threadRef: string;
+  firedAt: number;
+  scheduledAt?: number;
+  status?: TurnResult["status"] | "running" | "deferred";
+  endedAt?: number;
+  note?: string;
+  reply?: string;
+  sessionId?: string;
+}
+
+export interface CronFireNote {
+  text: string;
+  at: number;
+  by?: string;
+}
+
+export interface Cron extends TriggerBase {
+  runtime?: import("./harness/harness.ts").RuntimeChoice | null;
+  schedule: CronSchedule;
+  nextFireAt?: number;
+  lastAttemptAt?: number;
+  deferUntil?: number;
+  title?: string;
+  archived?: boolean;
+  action?: string;
+  message?: string;
+  loopId?: string;
+  createdAt: number;
+  runAs?: "owner" | "scopeFloor" | "scopeShared";
+  ownerResourcesRequireOpen?: boolean;
+  members?: Principal[];
+  unattendedGrants?: string[];
+
+  fireLog?: CronFireLogEntry[];
+  lastFireNote?: CronFireNote;
+}
+
+interface WebhookVerification {
+  scheme: "hmac-sha256" | "github" | "slack" | "stripe" | "linear";
+  secret?: string;
+}
+
+interface WebhookFilter {
+  path: string;
+  in: string[];
+}
+
+export interface Webhook extends TriggerBase {
+  action: string;
+  verification: WebhookVerification;
+  filters?: WebhookFilter[];
+  lastDeliveryId?: string;
+  lastError?: string;
+}
+
+export interface Monitor extends TriggerBase {
+  processId: string;
+  command: string;
+  threadRef: string;
+  instructions?: string;
+  pattern?: string;
+  cursor: number;
+  tail?: string;
+  expiresAt: number;
+  lastError?: string;
+}
+
+export type LoopState = "enabled" | "paused" | "quarantined" | "archived";
+
+export type LoopHealth = "healthy" | "degraded" | "failing" | "quarantined";
+
+export type ShipGate = "hold" | "auto";
+
+export interface ShipActionPolicy {
+  action: string;
+  gate: ShipGate;
+}
+
+export interface LoopCaps {
+  maxItemsPerFire?: number;
+  maxOpenOutputs?: number;
+  maxItemAttempts?: number;
+}
+
+export interface LoopGovernorConfig {
+  maxConsecutiveFailedFires?: number;
+  maxQueueDepth?: number;
+  maxQueueAgeMs?: number;
+  maxReturnRate?: number;
+  returnRateMinDecisions?: number;
+  staleFireMs?: number;
+}
+
+interface LoopPlaybookRevision {
+  version: number;
+  at: number;
+  by: string;
+  note?: string;
+}
+
+export interface Loop extends TriggerBase {
+  name: string;
+  icon?: string;
+  purpose?: string;
+  surface?: string;
+  sources?: string[];
+  playbook: string;
+  playbookVersion: number;
+  playbookHistory: LoopPlaybookRevision[];
+  policyVersion: number;
+  successCondition: string;
+  successChecks?: string[];
+  shipActions: ShipActionPolicy[];
+  caps?: LoopCaps;
+  governor?: LoopGovernorConfig;
+  state: LoopState;
+  health: LoopHealth;
+  healthReason?: string;
+  throttle?: boolean;
+  cronId?: string;
+  runAs?: "owner" | "scopeFloor" | "scopeShared";
+  consecutiveFailedFires?: number;
+  quarantineClearedBy?: string;
+  quarantineClearedAt?: number;
+}
+
+export type LoopItemStatus = "queued" | "in_progress" | "ready" | "shipped" | "failed" | "skipped";
+
+export type LoopSourcePayload = Record<string, unknown>;
+
+export interface LoopProposal {
+  data: LoopSourcePayload;
+  summary?: string;
+  by: "agent" | "human";
+  at: number;
+  sessionId?: string;
+}
+
+export interface LoopThreadMessage {
+  id: string;
+  role: "human" | "agent" | "system";
+  text: string;
+  at: number;
+  actorId?: string;
+}
+
+export interface LoopItem {
+  previousLoopId?: string;
+  inboxPreview?: LoopSourcePayload;
+  id: string;
+  loopId: string;
+  sourceKey: string;
+  sourceSummary?: string;
+  source?: string;
+  sourcePayload?: LoopSourcePayload;
+  sourceAt?: number;
+  proposal?: LoopProposal;
+  agentDrafts?: LoopProposal[];
+  agentMentionKeys?: string[];
+  thread?: LoopThreadMessage[];
+  status: LoopItemStatus;
+  attempts: number;
+  runIds: string[];
+  outputIds: string[];
+  parkedReason?: string;
+  guidance?: string;
+  actedAt?: number;
+  actionKind?: string;
+  actionResult?: string;
+  claimedAt?: number;
+  claimToken?: string;
+  decisionAt?: number;
+  decisionToken?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type LoopOutputState =
+  "staged" | "ready" | "shipping" | "unconfirmed" | "shipped" | "returned" | "superseded" | "expired";
+
+export interface LoopShipResult {
+  status?: TurnResult["status"];
+  note?: string;
+  reply?: string;
+  sessionId?: string;
+}
+
+export interface LoopOutput {
+  id: string;
+  loopId: string;
+  itemId: string;
+  attemptId: string;
+  shipAction: string;
+  label?: string;
+  externalRef?: string;
+  title: string;
+  summary?: string;
+  state: LoopOutputState;
+  capturedBy: "ledger" | "classifier" | "agent";
+  createdAt: number;
+  updatedAt: number;
+  decidedBy?: string;
+  decidedAt?: number;
+  decisionNote?: string;
+  claimedAt?: number;
+  claimToken?: string;
+  shipFireKey?: string;
+  shipResult?: LoopShipResult;
+  supersedesOutputIds?: string[];
+  supersededByOutputIds?: string[];
+}
+
+export interface ShipGrant {
+  id: string;
+  loopId: string;
+  shipAction: string;
+  label?: string;
+  actorId: string;
+  policyVersion: number;
+  createdAt: number;
+  revokedAt?: number;
+  revokedBy?: string;
+  revocationHistory?: Array<{ revokedAt: number; revokedBy: string }>;
+}
+
+export interface Delivery {
+  id: string;
+  destination: Destination;
+  text: string;
+  attachments?: OutgoingAttachment[];
+  provenance?: DeliveryProvenance;
+  idempotencyKey: string;
+  createdAt: number;
+  deliveredAt: number | null;
+  expiredAt?: number;
+  shadow?: boolean;
+  recipientThreadRef?: string;
+  deliverLatencyMs?: number;
+  slackApiMs?: number;
+}
+
+export interface SurfaceContextQuery {
+  rateLimitRecipient?: { target: string; user: string };
+  conversationTarget?: string;
+  channelId?: string;
+  channelName?: string;
+  count?: number;
+  viewer?: string;
+  before?: string;
+  match?: string;
+  searchAll?: string;
+  viewerToken?: string;
+  file?: { ts: string; threadTs?: string; name?: string };
+  openGroup?: { participants: string[] };
+  syncDirectory?: boolean;
+}
+
+export interface SurfaceContextResult {
+  messages: unknown[];
+  hasMore?: boolean;
+  nextBefore?: string;
+  note?: string;
+  file?: { blobId: string; name: string; mimetype?: string; sizeBytes: number; author?: string };
+  group?: { groupId: string };
+}
+
+export interface SurfaceContextRequest {
+  id: string;
+  source: string;
+  createdAt: number;
+  status: "pending" | "done" | "failed";
+  query: SurfaceContextQuery;
+  result?: SurfaceContextResult;
+  error?: string;
+}
+
+export interface EgressPolicy {
+  allowedHosts: string[];
+  denyPrivateNetworks?: boolean;
+  privateNetworkAllowedHosts?: string[];
+  deniedHosts?: string[];
+}
+
+export type CommandDecision = "allow" | "deny" | "require_approval";
+
+export interface CommandRule {
+  pattern: string;
+  decision: CommandDecision;
+  reason?: string;
+}
+
+type CommandPolicyMode = "denylist" | "allowlist";
+
+export interface CommandPolicy {
+  mode: CommandPolicyMode;
+  rules: CommandRule[];
+}
+
+interface BlobAttachment {
+  name: string;
+  mimetype: string;
+  sizeBytes: number;
+  blobId: string;
+}
+
+export type IncomingAttachment = BlobAttachment & {
+  sourceId?: string;
+  author?: string;
+};
+
+export type OutgoingAttachment = BlobAttachment & {
+  artifactId?: string;
+  artifactViewerId?: string;
+};
+
+export interface AttachmentMeta {
+  name: string;
+  mimetype: string;
+  sizeBytes: number;
+  direction: "in" | "out";
+  author?: string;
+  artifactId?: string;
+  sourceId?: string;
+}
+
+export interface GatewayContext {
+  location?: string;
+  details?: Record<string, string>;
+  instructions?: string;
+  reactionGuidance?: string;
+  botHandle?: string;
+}
+
+export interface ConversationTurn {
+  role: "user" | "assistant";
+  name?: string;
+  text: string;
+}
+
+export interface OverheardMessage {
+  ts: string;
+  role: "user" | "self";
+  name?: string;
+  text: string;
+  files?: string[];
+  mentions?: Record<string, string>;
+}
+
+export type TurnOrigin =
+  | { kind: "human"; messageTs?: string; entryTs?: string }
+  | { kind: "ambient"; entryTs?: string; live?: boolean }
+  | {
+      kind: "automation";
+      screenData?: string;
+      destination?: Destination;
+      useOwnerKeychain?: boolean;
+      ownerResourcesRequireOpen?: boolean;
+    }
+  | { kind: "direct" };
+
+export interface ClientToolDeclaration {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  timeoutMs?: number;
+}
+
+export interface ClientToolResult {
+  content: string;
+  structured?: unknown;
+  isError?: boolean;
+}
+
+export interface TurnRequest {
+  slackSource?: { accountId: string; teamId: string; userId: string };
+  externalSlack?: {
+    accountId: string;
+    teamId: string;
+    userId: string;
+    companyDomains: string[];
+    serviceCredentials: string[];
+  };
+  sessionSenderId?: string;
+  privateSessionMessage?: true;
+  sessionMessageDepth?: number;
+  surface: string;
+  scopeVersion?: string;
+  deliveryTarget?: string;
+  deliveryCandidates?: { target: string; label: string }[];
+  actor: ActorAssertion;
+  conversation: {
+    kind: ConversationKind;
+    threadRef: string;
+    channelRef?: string;
+    channelName?: string;
+    audience?: ActorAssertion[];
+    isPrivate?: boolean;
+    isMpim?: boolean;
+    publishMembers?: ActorAssertion[];
+  };
+  text: string;
+  origin?: TurnOrigin;
+  triggerTs?: string;
+  entryTs?: string;
+  gatewayContext?: GatewayContext;
+  triggered?: boolean;
+  unattendedGrants?: string[];
+  securityScreenData?: string;
+  triggerDestination?: Destination;
+  ownerKeychainUnion?: boolean;
+  ownerResourcesRequireOpen?: boolean;
+  unprompted?: boolean;
+  liveActor?: boolean;
+  botActor?: boolean;
+  conversationHeader?: string;
+  priorTurns?: ConversationTurn[];
+  overheard?: OverheardMessage[];
+  detectContext?: string;
+  detectOpener?: string;
+  attachments?: IncomingAttachment[];
+  inboundNotes?: string[];
+  model?: string;
+  harness?: string;
+  thinkingLevel?: string;
+  fastMode?: boolean;
+  readOnly?: boolean;
+  skipMemory?: boolean;
+  surfaceTools?: boolean;
+  addressed?: boolean;
+  envelopeWrapped?: boolean;
+  displayText?: string;
+  turnWallClockMs?: number;
+  timezone?: string;
+  intakePreambleMs?: number;
+  clientSentAt?: number;
+  approval?: { requestId: string; approved: boolean; scope?: ApprovalScope };
+  proactiveOpener?: boolean;
+  analyticsSuppressed?: boolean;
+  spawned?: boolean;
+  idempotencyKey?: string;
+  redeliveryKey?: string;
+  async?: boolean;
+  clientTools?: ClientToolDeclaration[];
+}
+
+export interface ActorAssertion {
+  externalId: string;
+  isExternalGuest?: boolean;
+  isBot?: boolean;
+  teamIds?: string[];
+  displayName?: string;
+}
+
+export interface PendingApproval {
+  requestId: string;
+  command: string;
+  reason: string;
+  matched?: string;
+  purpose?: string;
+  summary?: string;
+  summaryDetail?: string;
+  approvalKey?: string;
+  grantModes?: ApprovalGrantModes;
+  blocksInput?: boolean;
+  kind?: "approval" | "input";
+}
+
+export interface PendingApprovalRecord {
+  screenedOutput?: { tool: string; text: string; sourceScopeId?: ScopeId };
+  sessionId: string;
+  command: string;
+  createdAt?: number;
+  reason?: string;
+  matched?: string;
+  purpose?: string;
+  summary?: string;
+  summaryDetail?: string;
+  approvalKey?: string;
+  grantModes?: ApprovalGrantModes;
+  request?: TurnRequest;
+  blocksInput?: boolean;
+  kind?: "approval" | "input";
+}
+
+type ApprovalScope = "once" | "session" | "always";
+
+export interface ApprovalGrantModes {
+  session: boolean;
+  always: boolean;
+}
+
+export interface CommandApprovalGrant {
+  actorId: string;
+  command: string;
+  scope: Exclude<ApprovalScope, "once">;
+  createdAt: number;
+  sessionId?: string;
+  approvalKey?: string;
+}
+
+export interface TurnResult {
+  status: "ok" | "refused" | "failed" | "pending_approval" | "queued" | "silent" | "react";
+  sessionId?: string;
+  reply?: string;
+  reactions?: string[];
+  reason?: string;
+  refusalKind?: "security_quarantine" | "session_busy";
+  adminUrl?: string;
+  runId?: string;
+  steered?: true;
+  stopped?: boolean;
+  pendingApprovals?: PendingApproval[];
+  attachments?: OutgoingAttachment[];
+  sourceUserSeq?: number;
+  sourceAssistantEntrySeq?: number;
+}

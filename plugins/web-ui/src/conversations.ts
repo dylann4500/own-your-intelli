@@ -1,0 +1,115 @@
+import { createChatSurface } from "./chat";
+import { createComposerSurface } from "./composer";
+import { densityTierFor, type DensityTier } from "./density";
+import { subscribeDeliveries } from "./core-bridge";
+import { applySessionState } from "./session-list";
+import { refreshSessions, renderList, sessionsState } from "./sessions";
+import { appState } from "./shell-state";
+import type { Conversation, ConvCtx, ConvHost } from "./conv-types";
+
+const live = new Set<Conversation>();
+let main: Conversation | null = null;
+
+export function createConversation(host: ConvHost): Conversation {
+  const ctx = { ...host } as ConvCtx;
+  ctx.chat = createChatSurface(ctx);
+  ctx.composer = createComposerSurface(ctx);
+  const conv = ctx.chat as Conversation;
+  conv.composer = ctx.composer;
+  live.add(conv);
+  return conv;
+}
+
+export function disposeConversation(conv: Conversation): void {
+  live.delete(conv);
+  if (main === conv) main = null;
+  conv.composer.dispose();
+  conv.dispose();
+}
+
+export function allConversations(): Conversation[] {
+  return [...live];
+}
+
+export function isLiveConversation(conv: Conversation): boolean {
+  return live.has(conv);
+}
+
+export function mainConversation(): Conversation {
+  main ??= createConversation({
+    pane: false,
+    ownsUrl: true,
+    container: () => appState.mainEl,
+    claimContainer: () => {
+      exitCanvas();
+      return appState.mainEl;
+    },
+    visible: () => appState.currentView === "chats",
+    density: () => "full" as DensityTier,
+    onDensityChange: () => {},
+    ensureDeliveryStream,
+  });
+  return main;
+}
+
+export function paneDensity(el: HTMLElement): DensityTier | null {
+  const r = el.getBoundingClientRect();
+  const width = r.width || el.clientWidth;
+  const height = r.height || el.clientHeight;
+  return width > 0 && height > 0 ? densityTierFor(width, height) : null;
+}
+
+let exitCanvas: () => void = () => {};
+
+export function onExitCanvas(fn: () => void): void {
+  exitCanvas = fn;
+}
+
+let inboxItemHandler: ((event: { loopId: string; itemId: string; op: string }) => void) | null = null;
+
+export function onInboxItemEvent(fn: (event: { loopId: string; itemId: string; op: string }) => void): void {
+  inboxItemHandler = fn;
+}
+
+let inboxResyncHandler: (() => void) | null = null;
+
+export function onInboxResync(fn: () => void): void {
+  inboxResyncHandler = fn;
+}
+
+let deliveryStreamOpen = false;
+
+export function ensureDeliveryStream(): void {
+  if (deliveryStreamOpen) return;
+  deliveryStreamOpen = true;
+  subscribeDeliveries(
+    (threadRef) => {
+      void refreshSessions({ silent: true });
+      for (const conv of live) conv.onDelivery(threadRef);
+    },
+    (event) => {
+      if (event.state === "metadata") {
+        void refreshSessions({ silent: true });
+        return;
+      }
+      const { list, matched } = applySessionState(sessionsState.list, { ...event, state: event.state });
+      if (matched) {
+        sessionsState.list = list;
+        renderList();
+        const parentId = list.find((session) => session.threadRef === event.threadRef)?.parentSessionId;
+        if (parentId) for (const conv of live) if (conv.state.sessionId === parentId) conv.redraw();
+      } else {
+        void refreshSessions({ silent: true });
+      }
+      if (event.state === "working") for (const conv of live) conv.resumeIfIdle();
+      else for (const conv of live) conv.onDelivery(event.threadRef);
+    },
+    () => void refreshSessions({ silent: true }),
+    (event) => inboxItemHandler?.(event),
+    () => inboxResyncHandler?.(),
+  );
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    for (const conv of live) conv.resumeIfIdle();
+  });
+}
