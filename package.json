@@ -62,7 +62,9 @@
     "edge:dev": "node --env-file-if-exists=.env src/edge/main.ts",
     "qm-edge": "node src/edge/cli.ts",
     "edge:fake-client": "node scripts/edge-fake-client.ts",
-    "edge:build-cli": "node scripts/edge-build-cli.ts"
+    "edge:build-cli": "node scripts/edge-build-cli.ts",
+    "edge:agent": "node scripts/edge-agent-chat.ts",
+    "edge:sandbox:build": "node scripts/edge-build-cli.ts && docker build -f local/edge-demo.Dockerfile -t qm-sandbox-local:latest ."
   },
   "lint-staged": {
     "*": "prettier --write --ignore-unknown"
