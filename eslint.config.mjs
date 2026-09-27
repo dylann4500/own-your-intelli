@@ -54,7 +54,14 @@ export default tseslint.config(
   },
   {
     files: ["src/**/*.ts"],
-    ignores: ["src/config.ts", "src/index.ts", "src/runs/worker-main.ts", "src/egress-authz-main.ts"],
+    ignores: [
+      "src/config.ts",
+      "src/index.ts",
+      "src/runs/worker-main.ts",
+      "src/egress-authz-main.ts",
+      "src/edge/main.ts",
+      "src/edge/cli.ts",
+    ],
     rules: {
       "no-restricted-syntax": [
         "error",
@@ -106,7 +113,15 @@ export default tseslint.config(
   {
     // Same raw-error rule for plugin server code and the src files the env-boundary
     // block above deliberately skips (local scripts/ and test/ CLIs keep full stacks).
-    files: ["plugins/**/*.ts", "src/config.ts", "src/index.ts", "src/runs/worker-main.ts", "src/egress-authz-main.ts"],
+    files: [
+      "plugins/**/*.ts",
+      "src/config.ts",
+      "src/index.ts",
+      "src/runs/worker-main.ts",
+      "src/egress-authz-main.ts",
+      "src/edge/main.ts",
+      "src/edge/cli.ts",
+    ],
     rules: {
       "no-restricted-syntax": [
         "error",
