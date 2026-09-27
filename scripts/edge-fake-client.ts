@@ -75,7 +75,8 @@ function printPeers(members: EdgePresenceEntry[]): void {
 }
 
 function describe(op: EdgeCommittedOperation): string {
-  return `#${op.sequence} ${op.actor.displayName} (${op.actor.type}) ${op.label ?? op.action} ${fmt(op.payload["position"] ?? op.payload["light.intensity"])}`;
+  const where = op.payload["position"] === undefined ? "" : ` ${fmt(op.payload["position"])}`;
+  return `#${op.sequence} ${op.actor.displayName} (${op.actor.type}) ${op.label ?? op.action}${where}`;
 }
 
 function find(objectName: string): string {

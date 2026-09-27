@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { signedRequestHeaders } from "../src/auth/source-auth-sign.ts";
 
 const core = (process.env.QM_CORE_URL ?? "http://127.0.0.1:8080").replace(/\/+$/, "");
-const secret = process.env.CORE_SIGNING_SECRET;
+const secretFile = "data/edge-demo-secret";
+const secret =
+  process.env.CORE_SIGNING_SECRET ?? (existsSync(secretFile) ? readFileSync(secretFile, "utf8").trim() : undefined);
 const project = process.env.EDGE_PROJECT ?? "unity-demo";
 const user = process.env.QM_DEMO_USER ?? "edge-demo-user";
 const thread = `edge-demo-${randomUUID().slice(0, 8)}`;
@@ -14,7 +17,7 @@ const preamble =
   "connected editor and attributed to you as an agent. Keep replies short.\n\nRequest: ";
 
 if (!secret) {
-  console.error("Set CORE_SIGNING_SECRET to the same value QM core was started with.");
+  console.error("Start QM core with `npm run edge:qm` first, or set CORE_SIGNING_SECRET to the value core uses.");
   process.exit(1);
 }
 
